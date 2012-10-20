@@ -336,7 +336,13 @@ loop:
     if (vroot_aliastab != NULL) {
       char *start_ptr = NULL, *end_ptr = NULL, *src_path = NULL;
 
+      /* buf is used here for storing the "suffix", to be appended later when
+       * aliases are found.
+       */
+      bufp = buf;
+
       start_ptr = path;
+
       while (start_ptr != NULL) {
         char *ptr;
 
@@ -368,8 +374,8 @@ loop:
           sstrncpy(path, src_path, pathlen);
 
           if (end_ptr != NULL) {
-            sstrcat(path, "/", pathlen);
-            sstrcat(path, end_ptr + 1, pathlen);
+            /* Now tack on our suffix from the scratchpad. */
+            sstrcat(path, bufp, pathlen);
           }
 
           break;
@@ -390,6 +396,8 @@ loop:
           break;
         }
 
+        /* Store the suffix in the buf scratchpad. */
+        sstrncpy(buf, ptr, sizeof(buf));
         end_ptr = ptr;
         *end_ptr = '\0';
       }
