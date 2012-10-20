@@ -32,7 +32,7 @@
 #include "conf.h"
 #include "privs.h"
 
-#define MOD_VROOT_VERSION 	"mod_vroot/0.9.2"
+#define MOD_VROOT_VERSION 	"mod_vroot/0.9.3"
 
 /* Make sure the version of proftpd is as necessary. */
 #if PROFTPD_VERSION_NUMBER < 0x0001030201
@@ -1491,6 +1491,64 @@ MODRET set_vrootserverroot(cmd_rec *cmd) {
 /* Command handlers
  */
 
+MODRET vroot_log_retr(cmd_rec *cmd) {
+  const char *key;
+  char *path;
+
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  key = "mod_xfer.retr-path";
+
+  path = pr_table_get(cmd->notes, key, NULL);
+  if (path != NULL) {
+    char *real_path;
+
+    if (*path == '/') {
+      real_path = pdircat(cmd->pool, vroot_base, path, NULL);
+      vroot_clean_path(real_path);
+
+    } else {
+      real_path = vroot_realpath(cmd->pool, path, VROOT_REALPATH_FL_ABS_PATH);
+    }
+
+    pr_table_set(cmd->notes, key, real_path, 0);
+  }
+
+  return PR_DECLINED(cmd);
+}
+
+MODRET vroot_log_stor(cmd_rec *cmd) {
+  const char *key;
+  char *path;
+
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  key = "mod_xfer.store-path";
+
+  path = pr_table_get(cmd->notes, key, NULL);
+  if (path != NULL) {
+    char *real_path;
+
+    if (*path == '/') {
+      real_path = pdircat(cmd->pool, vroot_base, path, NULL);
+      vroot_clean_path(real_path);
+
+    } else {
+      real_path = vroot_realpath(cmd->pool, path, VROOT_REALPATH_FL_ABS_PATH);
+    }
+
+    pr_table_set(cmd->notes, key, real_path, 0);
+  }
+
+  return PR_DECLINED(cmd);
+}
+
 MODRET vroot_pre_pass(cmd_rec *cmd) {
   pr_fs_t *fs = NULL;
   unsigned char *use_vroot = NULL;
@@ -1679,6 +1737,27 @@ static cmdtable vroot_cmdtab[] = {
   { PRE_CMD,		C_PASS,	G_NONE,	vroot_pre_pass, FALSE, FALSE },
   { POST_CMD,		C_PASS,	G_NONE,	vroot_post_pass, FALSE, FALSE },
   { POST_CMD_ERR,	C_PASS,	G_NONE,	vroot_post_pass_err, FALSE, FALSE },
+
+  /* These command handlers are for manipulating cmd->notes, to get
+   * paths properly logged.
+   *
+   * Ideally these would be LOG_CMD/LOG_CMD_ERR phase handlers.  HOWEVER,
+   * we need to transform things before the cmd is dispatched to mod_log,
+   * and mod_log uses a C_ANY handler for logging.  And when dispatching,
+   * C_ANY handlers are run before named handlers.  This means that using
+   * LOG_CMD/LOG_CMD_ERR handlers would be run AFTER mod_log's handler,
+   * even though we appear BEFORE mod_log in the module load order.
+   *
+   * Thus to do the transformation, we actually use POST_CMD/POST_CMD_ERR
+   * phase handlers here.
+   */
+  { POST_CMD,		C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
+  { POST_CMD_ERR,	C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
+  { POST_CMD,		C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE },
+  { POST_CMD_ERR,	C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE },
+  { POST_CMD,		C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE },
+  { POST_CMD_ERR,	C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE },
+
   { 0, NULL }
 };
 
