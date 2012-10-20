@@ -278,7 +278,7 @@ sub vroot_engine {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -566,6 +566,9 @@ sub vroot_engine {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -580,7 +583,7 @@ sub vroot_anon {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -879,6 +882,9 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -893,7 +899,7 @@ sub vroot_symlink {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -1059,6 +1065,9 @@ sub vroot_symlink {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -1073,7 +1082,7 @@ sub vroot_symlink_eloop {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -1242,6 +1251,9 @@ sub vroot_symlink_eloop {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -1256,7 +1268,7 @@ sub vroot_opt_allow_symlinks_file {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -1446,6 +1458,9 @@ sub vroot_opt_allow_symlinks_file {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -1460,7 +1475,7 @@ sub vroot_opt_allow_symlinks_dir_retr {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -1654,6 +1669,9 @@ sub vroot_opt_allow_symlinks_dir_retr {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -1668,7 +1686,7 @@ sub vroot_opt_allow_symlinks_dir_stor_no_overwrite {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -1857,6 +1875,9 @@ sub vroot_opt_allow_symlinks_dir_stor_no_overwrite {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -1871,7 +1892,7 @@ sub vroot_opt_allow_symlinks_dir_stor {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -2066,6 +2087,9 @@ sub vroot_opt_allow_symlinks_dir_stor {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -2080,7 +2104,7 @@ sub vroot_opt_allow_symlinks_dir_cwd {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -2336,6 +2360,9 @@ sub vroot_opt_allow_symlinks_dir_cwd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -2350,7 +2377,7 @@ sub vroot_server_root {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -2576,6 +2603,9 @@ sub vroot_server_root {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -2590,7 +2620,7 @@ sub vroot_alias_file_list {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -2764,6 +2794,9 @@ sub vroot_alias_file_list {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -2778,7 +2811,7 @@ sub vroot_alias_file_list_multi {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -2956,6 +2989,9 @@ sub vroot_alias_file_list_multi {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -2970,7 +3006,7 @@ sub vroot_alias_file_retr {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -3108,6 +3144,9 @@ sub vroot_alias_file_retr {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -3122,7 +3161,7 @@ sub vroot_alias_file_stor_no_overwrite {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -3251,6 +3290,9 @@ sub vroot_alias_file_stor_no_overwrite {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -3265,7 +3307,7 @@ sub vroot_alias_file_stor {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -3401,6 +3443,9 @@ sub vroot_alias_file_stor {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -3415,7 +3460,7 @@ sub vroot_alias_file_dele {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -3544,6 +3589,9 @@ sub vroot_alias_file_dele {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -3558,7 +3606,7 @@ sub vroot_alias_file_mlsd {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -3686,6 +3734,9 @@ sub vroot_alias_file_mlsd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -3700,7 +3751,7 @@ sub vroot_alias_file_mlst {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -3822,6 +3873,9 @@ sub vroot_alias_file_mlst {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -3836,7 +3890,7 @@ sub vroot_alias_dup_same_name {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -4009,6 +4063,9 @@ sub vroot_alias_dup_same_name {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -4023,7 +4080,7 @@ sub vroot_alias_dup_colliding_aliases {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -4198,6 +4255,9 @@ sub vroot_alias_dup_colliding_aliases {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -4212,7 +4272,7 @@ sub vroot_alias_delete_source {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -4397,6 +4457,9 @@ sub vroot_alias_delete_source {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -4411,7 +4474,7 @@ sub vroot_alias_no_source {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -4573,6 +4636,9 @@ sub vroot_alias_no_source {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -4587,7 +4653,7 @@ sub vroot_alias_dir_list_no_trailing_slash {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -4753,6 +4819,9 @@ sub vroot_alias_dir_list_no_trailing_slash {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -4767,7 +4836,7 @@ sub vroot_alias_dir_list_with_trailing_slash {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -4933,6 +5002,9 @@ sub vroot_alias_dir_list_with_trailing_slash {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -4947,7 +5019,7 @@ sub vroot_alias_dir_list_from_above {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -5131,6 +5203,9 @@ sub vroot_alias_dir_list_from_above {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -5145,7 +5220,7 @@ sub vroot_alias_dir_cwd_list {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -5349,6 +5424,9 @@ sub vroot_alias_dir_cwd_list {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -5363,7 +5441,7 @@ sub vroot_alias_dir_cwd_cdup {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -5519,6 +5597,9 @@ sub vroot_alias_dir_cwd_cdup {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -5533,7 +5614,7 @@ sub vroot_alias_dir_mkd {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -5653,6 +5734,9 @@ sub vroot_alias_dir_mkd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -5667,7 +5751,7 @@ sub vroot_alias_dir_rmd {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -5787,6 +5871,9 @@ sub vroot_alias_dir_rmd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -5801,7 +5888,7 @@ sub vroot_alias_dir_cwd_mlsd {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -5984,6 +6071,9 @@ sub vroot_alias_dir_cwd_mlsd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -5998,7 +6088,7 @@ sub vroot_alias_dir_mlsd_from_above {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -6170,6 +6260,9 @@ sub vroot_alias_dir_mlsd_from_above {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -6184,7 +6277,7 @@ sub vroot_alias_dir_outside_root_cwd_mlsd {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -6368,6 +6461,9 @@ sub vroot_alias_dir_outside_root_cwd_mlsd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -6382,7 +6478,7 @@ sub vroot_alias_dir_outside_root_cwd_mlsd_cwd_ls {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -6643,6 +6739,9 @@ sub vroot_alias_dir_outside_root_cwd_mlsd_cwd_ls {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -6657,7 +6756,7 @@ sub vroot_alias_dir_mlst {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -6771,6 +6870,9 @@ sub vroot_alias_dir_mlst {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -6785,7 +6887,7 @@ sub vroot_alias_symlink_list {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -6976,6 +7078,9 @@ sub vroot_alias_symlink_list {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -6990,7 +7095,7 @@ sub vroot_alias_symlink_retr {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -7144,6 +7249,9 @@ sub vroot_alias_symlink_retr {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -7158,7 +7266,7 @@ sub vroot_alias_symlink_stor_no_overwrite {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -7303,6 +7411,9 @@ sub vroot_alias_symlink_stor_no_overwrite {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -7317,7 +7428,7 @@ sub vroot_alias_symlink_stor {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -7469,6 +7580,9 @@ sub vroot_alias_symlink_stor {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -7483,7 +7597,7 @@ sub vroot_alias_symlink_mlsd {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -7627,6 +7741,9 @@ sub vroot_alias_symlink_mlsd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -7641,7 +7758,7 @@ sub vroot_alias_symlink_mlst {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -7779,6 +7896,9 @@ sub vroot_alias_symlink_mlst {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -7793,7 +7913,7 @@ sub vroot_alias_ifuser {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -7984,6 +8104,9 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -7998,7 +8121,7 @@ sub vroot_alias_ifgroup {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -8188,6 +8311,9 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -8202,7 +8328,7 @@ sub vroot_alias_ifgroup_list_stor {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -8483,6 +8609,9 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -8497,7 +8626,7 @@ sub vroot_alias_ifclass {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -8691,6 +8820,9 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -8705,7 +8837,7 @@ sub vroot_showsymlinks_on {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -8928,6 +9060,9 @@ sub vroot_showsymlinks_on {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -8942,7 +9077,7 @@ sub vroot_hiddenstores_on_double_dot {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -9063,6 +9198,9 @@ sub vroot_hiddenstores_on_double_dot {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
@@ -9077,7 +9215,7 @@ sub vroot_mfmt {
   my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
   my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
 
-  my $log_file = File::Spec->rel2abs('tests.log');
+  my $log_file = test_get_logfile();
 
   my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
   my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
@@ -9242,6 +9380,9 @@ sub vroot_mfmt {
   $self->assert_child_ok($pid);
 
   if ($ex) {
+    test_append_logfile($ex, $log_file);
+    unlink($log_file);
+
     die($ex);
   }
 
