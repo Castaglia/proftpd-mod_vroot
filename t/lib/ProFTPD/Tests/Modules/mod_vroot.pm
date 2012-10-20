@@ -270,16 +270,23 @@ my $TESTS = {
   },
 
   # XXX Currently does not work, since TransferLog logging can't be filtered
-  vroot_log_xferlog_retr => {
-    order => ++$order,
-    test_class => [qw(forking)],
-  },
+#  vroot_log_xferlog_retr => {
+#    order => ++$order,
+#    test_class => [qw(inprogress forking)],
+#  },
 
   # XXX Currently does not work, since TransferLog logging can't be filtered
-  vroot_log_xferlog_stor => {
-    order => ++$order,
-    test_class => [qw(forking)],
-  },
+#  vroot_log_xferlog_stor => {
+#    order => ++$order,
+#    test_class => [qw(inprogress forking)],
+#  },
+
+  # XXX Currently does not work due to <Directory> matching logic, and to
+  # mod_vroot's session.chroot_path machinations.
+#  vroot_config_limit_write => {
+#    order => ++$order,
+#    test_class => [qw(bug forking)],
+#  },
 
 };
 
@@ -593,7 +600,7 @@ sub vroot_engine {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -909,7 +916,7 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -1092,7 +1099,7 @@ sub vroot_symlink {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -1278,7 +1285,7 @@ sub vroot_symlink_eloop {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -1485,7 +1492,7 @@ sub vroot_opt_allow_symlinks_file {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -1696,7 +1703,7 @@ sub vroot_opt_allow_symlinks_dir_retr {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -1902,7 +1909,7 @@ sub vroot_opt_allow_symlinks_dir_stor_no_overwrite {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -2114,7 +2121,7 @@ sub vroot_opt_allow_symlinks_dir_stor {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -2387,7 +2394,7 @@ sub vroot_opt_allow_symlinks_dir_cwd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -2630,7 +2637,7 @@ sub vroot_server_root {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -2821,7 +2828,7 @@ sub vroot_alias_file_list {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -3016,7 +3023,7 @@ sub vroot_alias_file_list_multi {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -3165,7 +3172,7 @@ sub vroot_alias_file_retr {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -3311,7 +3318,7 @@ sub vroot_alias_file_stor_no_overwrite {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -3464,7 +3471,7 @@ sub vroot_alias_file_stor {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -3610,7 +3617,7 @@ sub vroot_alias_file_dele {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -3755,7 +3762,7 @@ sub vroot_alias_file_mlsd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -3894,7 +3901,7 @@ sub vroot_alias_file_mlst {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -4084,7 +4091,7 @@ sub vroot_alias_dup_same_name {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -4276,7 +4283,7 @@ sub vroot_alias_dup_colliding_aliases {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -4478,7 +4485,7 @@ sub vroot_alias_delete_source {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -4657,7 +4664,7 @@ sub vroot_alias_no_source {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -4840,7 +4847,7 @@ sub vroot_alias_dir_list_no_trailing_slash {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -5023,7 +5030,7 @@ sub vroot_alias_dir_list_with_trailing_slash {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -5224,7 +5231,7 @@ sub vroot_alias_dir_list_from_above {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -5445,7 +5452,7 @@ sub vroot_alias_dir_cwd_list {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -5611,7 +5618,7 @@ sub vroot_alias_dir_cwd_stor {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -5783,7 +5790,7 @@ sub vroot_alias_dir_cwd_cdup {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -5920,7 +5927,7 @@ sub vroot_alias_dir_mkd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -6057,7 +6064,7 @@ sub vroot_alias_dir_rmd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -6257,7 +6264,7 @@ sub vroot_alias_dir_cwd_mlsd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -6446,7 +6453,7 @@ sub vroot_alias_dir_mlsd_from_above {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -6647,7 +6654,7 @@ sub vroot_alias_dir_outside_root_cwd_mlsd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -6925,7 +6932,7 @@ sub vroot_alias_dir_outside_root_cwd_mlsd_cwd_ls {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -7056,7 +7063,7 @@ sub vroot_alias_dir_mlst {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -7264,7 +7271,7 @@ sub vroot_alias_symlink_list {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -7435,7 +7442,7 @@ sub vroot_alias_symlink_retr {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -7597,7 +7604,7 @@ sub vroot_alias_symlink_stor_no_overwrite {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -7766,7 +7773,7 @@ sub vroot_alias_symlink_stor {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -7927,7 +7934,7 @@ sub vroot_alias_symlink_mlsd {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -8082,7 +8089,7 @@ sub vroot_alias_symlink_mlst {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -8290,7 +8297,7 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -8497,7 +8504,7 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -8795,7 +8802,7 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -9006,7 +9013,7 @@ EOC
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -9246,7 +9253,7 @@ sub vroot_showsymlinks_on {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -9384,7 +9391,7 @@ sub vroot_hiddenstores_on_double_dot {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -9566,7 +9573,7 @@ sub vroot_mfmt {
   $self->assert_child_ok($pid);
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -9730,7 +9737,7 @@ sub vroot_log_extlog_retr {
   }
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -9885,7 +9892,7 @@ sub vroot_log_extlog_stor {
   }
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -10077,7 +10084,7 @@ sub vroot_log_xferlog_retr {
   }
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
@@ -10260,7 +10267,157 @@ sub vroot_log_xferlog_stor {
   }
 
   if ($ex) {
-    test_append_logfile($ex, $log_file);
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub vroot_config_limit_write {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/vroot.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'fsio:10',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+
+    IfModules => {
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $log_file,
+
+        DefaultRoot => '~',
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  if (open(my $fh, ">> $config_file")) {
+    print $fh <<EOC;
+<Directory $home_dir>
+  <Limit WRITE>
+    DenyAll
+  </Limit>
+</Directory>
+EOC
+    unless (close($fh)) {
+      die("Can't write $config_file: $!");
+    }
+
+  } else {
+    die("Can't open $config_file: $!");
+  }
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my $conn = $client->stor_raw('test.txt');
+      if ($conn) {
+        eval { $conn->close() };
+        die("STOR test.txt succeeded unexpectedly");
+      }
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected;
+
+      $expected = 550;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected $expected, got $resp_code"));
+
+      $expected = "test.txt: Permission denied";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected '$expected', got '$resp_msg'"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
     unlink($log_file);
 
     die($ex);
