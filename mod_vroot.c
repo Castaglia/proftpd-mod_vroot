@@ -2,7 +2,7 @@
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
  *
- * Copyright (c) 2002-2011 TJ Saunders
+ * Copyright (c) 2002-2012 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -56,6 +56,9 @@ static pr_table_t *vroot_dirtab = NULL;
 static unsigned int vroot_opts = 0;
 #define	VROOT_OPT_ALLOW_SYMLINKS	0x0001
 
+/* vroot_realpath() flags */
+#define VROOT_REALPATH_FL_ABS_PATH	0x001
+
 /* vroot_lookup_path() flags */
 #define VROOT_LOOKUP_FL_NO_ALIASES	0x0001
 
@@ -68,8 +71,10 @@ static int vroot_is_alias(const char *);
  */
 
 static void strmove(register char *dst, register const char *src) {
-  if (!dst || !src)
+  if (dst == NULL ||
+      src == NULL) {
     return;
+  }
 
   while (*src != 0) {
     *dst++ = *src++;
@@ -81,23 +86,29 @@ static void strmove(register char *dst, register const char *src) {
 static void vroot_clean_path(char *path) {
   char *p;
 
-  if (path == NULL || *path == 0)
+  if (path == NULL ||
+      *path == 0) {
       return;
+  }
 
-  while ((p = strstr(path, "//")) != NULL)
+  while ((p = strstr(path, "//")) != NULL) {
     strmove(p, p + 1);
+  }
 
-  while ((p = strstr(path, "/./")) != NULL)
+  while ((p = strstr(path, "/./")) != NULL) {
     strmove(p, p + 2);
+  }
 
-  while (strncmp(path, "../", 3) == 0)
+  while (strncmp(path, "../", 3) == 0) {
     path += 3;
+  }
 
   p = strstr(path, "/../");
   if (p != NULL) {
     if (p == path) {
-      while (strncmp(path, "/../", 4) == 0)
+      while (strncmp(path, "/../", 4) == 0) {
         strmove(path, path + 3);
+      }
 
       p = strstr(path, "/../");
     }
@@ -105,14 +116,19 @@ static void vroot_clean_path(char *path) {
     while (p != NULL) {
       char *next_elem = p + 4;
 
-      if (p != path && *p == '/') 
+      if (p != path &&
+          *p == '/') {
         p--;
+      }
 
-      while (p != path && *p != '/')
+      while (p != path &&
+             *p != '/') {
         p--;
+      }
 
-      if (*p == '/')
+      if (*p == '/') {
         p++;
+      }
 
       strmove(p, next_elem);
       p = strstr(path, "/../");
@@ -124,36 +140,45 @@ static void vroot_clean_path(char *path) {
   if (*p == '.') {
     p++;
 
-    if (*p == '\0')
+    if (*p == '\0') {
       return;
+    }
 
     if (*p == '/') {
-      while (*p == '/') 
+      while (*p == '/') {
         p++;
+      }
 
       strmove(path, p);
     }
   }
 
-  if (*p == '\0')
+  if (*p == '\0') {
     return;
+  }
 
   p = path + strlen(path) - 1;
-  if (*p != '.' || p == path)
+  if (*p != '.' ||
+      p == path) {
     return;
+  }
 
   p--;
-  if (*p == '/' || p == path) {
+  if (*p == '/' ||
+      p == path) {
     p[1] = '\0';
     return;
   }
 
-  if (*p != '.' || p == path)
+  if (*p != '.' ||
+      p == path) {
     return;
+  }
 
   p--;
-  if (*p != '/')
+  if (*p != '/') {
     return;
+  }
 
   *p = '\0';
   p = strrchr(path, '/');
@@ -164,6 +189,38 @@ static void vroot_clean_path(char *path) {
   }
 
   p[1] = '\0';
+}
+
+static char *vroot_realpath(pool *p, const char *path, int flags) {
+  char *real_path;
+  size_t real_pathlen;
+
+  if (flags & VROOT_REALPATH_FL_ABS_PATH) {
+    /* If not an absolute path, prepend the current location. */
+    if (*real_path != '/') {
+      real_path = pdircat(p, pr_fs_getvwd(), path, NULL);
+
+    } else {
+      real_path = pstrdup(p, path);
+    }
+
+  } else {
+    real_path = pstrdup(p, path);
+  }
+
+  vroot_clean_path(real_path);
+
+  /* If the given path ends in a slash, remove it.  The handling of
+   * VRootAliases is sensitive to such things.
+   */
+  real_pathlen = strlen(real_path);
+  if (real_pathlen > 1 &&
+      real_path[real_pathlen-1] == '/') {
+    real_path[real_pathlen-1] = '\0';
+    real_pathlen--;
+  }
+
+  return real_path;
 }
 
 static int vroot_lookup_path(pool *p, char *path, size_t pathlen,
@@ -219,7 +276,6 @@ loop:
 
   } else if (*bufp == '/') {
     snprintf(path, pathlen, "%s/", vroot_base);
-
     bufp += 1;
     goto loop;
 
@@ -431,10 +487,9 @@ static int handle_vroot_alias(void) {
 /* FS callbacks
  */
 
-static int vroot_stat(pr_fs_t *fs, const char *orig_path, struct stat *st) {
+static int vroot_stat(pr_fs_t *fs, const char *stat_path, struct stat *st) {
   int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1], *path;
-  size_t path_len = 0;
   pool *tmp_pool = NULL;
 
   if (session.curr_phase == LOG_CMD ||
@@ -444,23 +499,11 @@ static int vroot_stat(pr_fs_t *fs, const char *orig_path, struct stat *st) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    return stat(orig_path, st);
+    return stat(stat_path, st);
   }
 
   tmp_pool = make_sub_pool(session.pool);
-
-  path = pstrdup(tmp_pool, orig_path);
-  vroot_clean_path(path);
-
-  /* If the given path ends in a slash, remove it.  The handling of
-   * VRootAliases is sensitive to such things.
-   */
-  path_len = strlen(path);
-  if (path_len > 1 &&
-      path[path_len-1] == '/') {
-    path[path_len-1] = '\0';
-    path_len--;
-  }
+  path = vroot_realpath(tmp_pool, stat_path, 0);
 
   if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
     destroy_pool(tmp_pool);
@@ -475,7 +518,7 @@ static int vroot_stat(pr_fs_t *fs, const char *orig_path, struct stat *st) {
 static int vroot_lstat(pr_fs_t *fs, const char *orig_path, struct stat *st) {
   int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1], *path;
-  size_t path_len = 0;
+  size_t pathlen = 0;
   pool *tmp_pool = NULL;
 
   if (session.curr_phase == LOG_CMD ||
@@ -496,11 +539,11 @@ static int vroot_lstat(pr_fs_t *fs, const char *orig_path, struct stat *st) {
   /* If the given path ends in a slash, remove it.  The handling of
    * VRootAliases is sensitive to such things.
    */
-  path_len = strlen(path);
-  if (path_len > 1 &&
-      path[path_len-1] == '/') {
-    path[path_len-1] = '\0';
-    path_len--;
+  pathlen = strlen(path);
+  if (pathlen > 1 &&
+      path[pathlen-1] == '/') {
+    path[pathlen-1] = '\0';
+    pathlen--;
   }
 
   if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
@@ -931,7 +974,50 @@ static int vroot_chdir(pr_fs_t *fs, const char *path) {
   return 0;
 }
 
-static struct dirent vroot_dent;
+static int vroot_utimes(pr_fs_t *fs, const char *utimes_path,
+    struct timeval *tvs) {
+  int res;
+  char vpath[PR_TUNABLE_PATH_MAX + 1], *path;
+  pool *tmp_pool;
+
+  if (session.curr_phase == LOG_CMD ||
+      session.curr_phase == LOG_CMD_ERR ||
+      (session.sf_flags & SF_ABORT) ||
+      *vroot_base == '\0') {
+    /* NOTE: once stackable FS modules are supported, have this fall through
+     * to the next module in the stack.
+     */
+    res = utimes(utimes_path, tvs);
+    return res;
+  }
+
+  tmp_pool = make_sub_pool(session.pool);
+  path = vroot_realpath(tmp_pool, utimes_path, VROOT_REALPATH_FL_ABS_PATH);
+  
+  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
+    destroy_pool(tmp_pool);
+    return -1;
+  }
+
+  res = utimes(vpath, tvs);
+  destroy_pool(tmp_pool);
+  return res;
+}
+
+static struct dirent *vroot_dent = NULL;
+static size_t vroot_dentsz = 0;
+
+/* On most systems, dirent.d_name is an array into which we can copy the
+ * name we want.
+ *
+ * However, on other systems (e.g. Solaris 2), dirent.d_name is an array size
+ * of 1.  This approach makes use of the fact that the d_name member is the
+ * last member of the struct, meaning that the actual size is variable.
+ *
+ * We need to Do The Right Thing(tm) in either case.
+ */
+static size_t vroot_dent_namesz = 0;
+
 static array_header *vroot_dir_aliases = NULL;
 static int vroot_dir_idx = -1;
 
@@ -997,7 +1083,7 @@ static void *vroot_opendir(pr_fs_t *fs, const char *orig_path) {
   char vpath[PR_TUNABLE_PATH_MAX + 1], *path;
   void *dirh;
   struct stat st;
-  size_t path_len = 0;
+  size_t pathlen = 0;
   pool *tmp_pool = NULL;
 
   if (session.curr_phase == LOG_CMD ||
@@ -1022,11 +1108,11 @@ static void *vroot_opendir(pr_fs_t *fs, const char *orig_path) {
   /* If the given path ends in a slash, remove it.  The handling of
    * VRootAliases is sensitive to such things.
    */
-  path_len = strlen(path);
-  if (path_len > 1 &&
-      path[path_len-1] == '/') {
-    path[path_len-1] = '\0';
-    path_len--;
+  pathlen = strlen(path);
+  if (pathlen > 1 &&
+      path[pathlen-1] == '/') {
+    path[pathlen-1] = '\0';
+    pathlen--;
   }
 
   if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
@@ -1165,11 +1251,18 @@ next_dent:
         return NULL;
       }
 
-      memset(&vroot_dent, 0, sizeof(vroot_dent));
-      sstrncpy(vroot_dent.d_name, elts[vroot_dir_idx++],
-        sizeof(vroot_dent.d_name));
+      memset(vroot_dent, 0, vroot_dentsz);
 
-      return &vroot_dent;
+      if (vroot_dent_namesz == 0) {
+        sstrncpy(vroot_dent->d_name, elts[vroot_dir_idx++],
+          sizeof(vroot_dent->d_name));
+
+      } else {
+        sstrncpy(vroot_dent->d_name, elts[vroot_dir_idx++],
+          vroot_dent_namesz);
+      }
+
+      return vroot_dent;
     }
   }
 
@@ -1435,6 +1528,7 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
   fs->chown = vroot_chown;
   fs->chdir = vroot_chdir;
   fs->chroot = vroot_chroot;
+  fs->utimes = vroot_utimes;
   fs->opendir = vroot_opendir;
   fs->readdir = vroot_readdir;
   fs->closedir = vroot_closedir;
@@ -1509,6 +1603,7 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
 
 static int vroot_sess_init(void) {
   config_rec *c;
+  struct dirent dent;
 
   c = find_config(main_server->conf, CONF_PARAM, "VRootLog", FALSE);
   if (c) {
@@ -1544,6 +1639,18 @@ static int vroot_sess_init(void) {
         break;
     }
   }
+
+  /* Allocate the memory for the static struct dirent that we use, including
+   * determining the necessary sizes.
+   */
+  vroot_dentsz = sizeof(dent);
+  if (sizeof(dent.d_name) == 1) {
+    /* Allocate extra space for the dent path name. */
+    vroot_dent_namesz = PR_TUNABLE_PATH_MAX;
+  }
+
+  vroot_dentsz += vroot_dent_namesz;
+  vroot_dent = palloc(session.pool, vroot_dentsz);
 
   return 0;
 }
