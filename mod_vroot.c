@@ -608,10 +608,7 @@ static int vroot_unlink(pr_fs_t *fs, const char *path) {
   int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
 
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
+  if (vroot_base[0] == '\0') {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
