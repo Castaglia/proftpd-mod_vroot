@@ -2,7 +2,7 @@
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
  *
- * Copyright (c) 2002-2012 TJ Saunders
+ * Copyright (c) 2002-2013 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -35,8 +35,8 @@
 #define MOD_VROOT_VERSION 	"mod_vroot/0.9.3"
 
 /* Make sure the version of proftpd is as necessary. */
-#if PROFTPD_VERSION_NUMBER < 0x0001030201
-# error "ProFTPD 1.3.2rc1 or later required"
+#if PROFTPD_VERSION_NUMBER < 0x0001030407
+# error "ProFTPD 1.3.4c or later required"
 #endif
 
 static const char *vroot_log = NULL;
@@ -52,6 +52,8 @@ static pr_table_t *vroot_aliastab = NULL;
 
 static pool *vroot_dir_pool = NULL;
 static pr_table_t *vroot_dirtab = NULL;
+
+static int vroot_use_mkdtemp = FALSE;
 
 static unsigned int vroot_opts = 0;
 #define	VROOT_OPT_ALLOW_SYMLINKS	0x0001
@@ -1546,6 +1548,26 @@ MODRET vroot_log_stor(cmd_rec *cmd) {
   return PR_DECLINED(cmd);
 }
 
+MODRET vroot_pre_mkd(cmd_rec *cmd) {
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  vroot_use_mkdtemp = pr_fsio_set_use_mkdtemp(FALSE);
+  return PR_DECLINED(cmd);
+}
+
+MODRET vroot_post_mkd(cmd_rec *cmd) {
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  pr_fsio_set_use_mkdtemp(vroot_use_mkdtemp);
+  return PR_DECLINED(cmd);
+}
+
 MODRET vroot_pre_pass(cmd_rec *cmd) {
   pr_fs_t *fs = NULL;
   unsigned char *use_vroot = NULL;
@@ -1734,6 +1756,13 @@ static cmdtable vroot_cmdtab[] = {
   { PRE_CMD,		C_PASS,	G_NONE,	vroot_pre_pass, FALSE, FALSE },
   { POST_CMD,		C_PASS,	G_NONE,	vroot_post_pass, FALSE, FALSE },
   { POST_CMD_ERR,	C_PASS,	G_NONE,	vroot_post_pass_err, FALSE, FALSE },
+
+  { PRE_CMD,		C_MKD,	G_NONE,	vroot_pre_mkd, FALSE, FALSE },
+  { POST_CMD,		C_MKD,	G_NONE,	vroot_post_mkd, FALSE, FALSE },
+  { POST_CMD_ERR,	C_MKD,	G_NONE,	vroot_post_mkd, FALSE, FALSE },
+  { PRE_CMD,		C_XMKD,	G_NONE,	vroot_pre_mkd, FALSE, FALSE },
+  { POST_CMD,		C_XMKD,	G_NONE,	vroot_post_mkd, FALSE, FALSE },
+  { POST_CMD_ERR,	C_XMKD,	G_NONE,	vroot_post_mkd, FALSE, FALSE },
 
   /* These command handlers are for manipulating cmd->notes, to get
    * paths properly logged.
