@@ -827,6 +827,28 @@ static int vroot_chown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
   return res;
 }
 
+static int vroot_lchown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
+  int res;
+  char vpath[PR_TUNABLE_PATH_MAX + 1];
+
+  if (session.curr_phase == LOG_CMD ||
+      session.curr_phase == LOG_CMD_ERR ||
+      (session.sf_flags & SF_ABORT) ||
+      *vroot_base == '\0') {
+    /* NOTE: once stackable FS modules are supported, have this fall through
+     * to the next module in the stack.
+     */
+    res = lchown(path, uid, gid);
+    return res;
+  }
+
+  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
+    return -1;
+
+  res = lchown(vpath, uid, gid);
+  return res;
+}
+
 static int vroot_chroot(pr_fs_t *fs, const char *path) {
   char *chroot_path = "/", *tmp = NULL;
   config_rec *c;
@@ -1611,6 +1633,7 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
   fs->truncate = vroot_truncate;
   fs->chmod = vroot_chmod;
   fs->chown = vroot_chown;
+  fs->lchown = vroot_lchown;
   fs->chdir = vroot_chdir;
   fs->chroot = vroot_chroot;
   fs->utimes = vroot_utimes;
