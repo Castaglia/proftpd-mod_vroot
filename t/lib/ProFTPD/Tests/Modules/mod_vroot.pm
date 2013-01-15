@@ -64,6 +64,11 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
+  vroot_dir_mkd => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
   vroot_server_root => {
     order => ++$order,
     test_class => [qw(forking rootprivs)],
@@ -2410,6 +2415,185 @@ sub vroot_opt_allow_symlinks_dir_cwd {
     die($ex);
   }
 
+  unlink($log_file);
+}
+
+sub vroot_dir_mkd {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/vroot.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs($tmpdir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $sub_dir = File::Spec->rel2abs("$tmpdir/foo.d");
+  mkpath($sub_dir);
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'fsio:10 vroot:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+
+    Directory => {
+      # BUG: This should be $sub_dir.  But due to how mod_vroot currently
+      # works, the <Directory> path has to be modified to match the
+      # mod_vroot.  (I.e. for the purposes of this test, just '/foo.d').
+      # Sigh.
+
+      # '/foo.d' => {
+      $sub_dir => {
+        # Test the UserOwner directive in the <Directory> setting
+        UserOwner => 'root',
+      },
+    },
+
+    IfModules => {
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $log_file,
+        DefaultRoot => '~',
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+      $client->cwd('foo.d');
+      $client->mkd('bar.d');
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+
+      my $expected;
+
+      $expected = 257;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = "\"/foo.d/bar.d\" - Directory successfully created";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) { warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  if (open(my $fh, "< $log_file")) {
+    # Look for the 'smkdir' fsio channel trace message; it will tell us whether
+    # the UserOwner directive from the <Directory> section was successfully
+    # found.
+
+    my $have_smkdir_line = 0;
+    my $line;
+    while ($line = <$fh>) {
+      chomp($line);
+
+      if ($line =~ /smkdir/) {
+        $have_smkdir_line = 1;
+        last;
+      }
+    }
+
+    close($fh);
+
+    $self->assert($have_smkdir_line,
+      test_msg("Did not find expected 'fsio' channel TraceLog line in $log_file"));
+
+    if ($line =~ /UID (\d+)/) {
+      my $smkdir_uid = $1;
+
+      $self->assert($smkdir_uid == 0,
+        test_msg("Expected UID 0, got $smkdir_uid"));
+
+    } else {
+      die("Unexpectedly formatted 'fsio' channel TraceLog line '$line'");
+    }
+
+  } else {
+    die("Can't read $log_file: $!");
+  }
+ 
   unlink($log_file);
 }
 
@@ -5854,7 +6038,7 @@ sub vroot_alias_dir_mkd {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'fsio:10',
+    Trace => 'fsio:10 vroot:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
