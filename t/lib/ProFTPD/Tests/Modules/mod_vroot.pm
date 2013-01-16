@@ -1472,14 +1472,7 @@ sub vroot_opt_allow_symlinks_file {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = "Transfer complete";
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
     };
@@ -1683,14 +1676,7 @@ sub vroot_opt_allow_symlinks_dir_retr {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = "Transfer complete";
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
     };
@@ -2101,14 +2087,7 @@ sub vroot_opt_allow_symlinks_dir_stor {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = "Transfer complete";
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
     };
@@ -3629,16 +3608,7 @@ sub vroot_alias_file_stor {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      my $expected;
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = 'Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
     };
@@ -7596,20 +7566,11 @@ sub vroot_alias_symlink_retr {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      my $expected;
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = 'Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
 
-      $expected = 14;
+      my $expected = 14;
       $self->assert($expected == $count,
         test_msg("Expected $expected, got $count"));
     };
@@ -7931,16 +7892,7 @@ sub vroot_alias_symlink_stor {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      my $expected;
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = 'Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
     };
@@ -8840,14 +8792,7 @@ EOC
 
       $resp_code = $client->response_code();
       $resp_msg = $client->response_msg();
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = 'Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       # We have to be careful of the fact that readdir returns directory
       # entries in an unordered fashion.
@@ -8908,14 +8853,7 @@ EOC
 
       $resp_code = $client->response_code();
       $resp_msg = $client->response_msg();
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = 'Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       # We have to be careful of the fact that readdir returns directory
       # entries in an unordered fashion.
@@ -8962,14 +8900,7 @@ EOC
 
       $resp_code = $client->response_code();
       $resp_msg = $client->response_msg();
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = 'Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
     };
@@ -9412,14 +9343,7 @@ sub vroot_showsymlinks_on {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = "Transfer complete";
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
     };
@@ -9551,14 +9475,7 @@ sub vroot_hiddenstores_on_double_dot {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      my $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = 'Transfer complete';
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg);
 
       $client->quit();
     };
@@ -10719,22 +10636,11 @@ sub vroot_config_deleteabortedstores_conn_aborted {
         die("File $hidden_file does not exist as expected");
       }
 
-      $conn->abort();
+      eval { $conn->abort() };
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      my $expected;
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = "Abort successful";
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
-
-      $client->quit();
+      $self->assert_transfer_ok($resp_code, $resp_msg, 1);
 
       if (-f $test_file) {
         die("File $test_file exists unexpectedly");
@@ -10881,16 +10787,7 @@ sub vroot_config_deleteabortedstores_cmd_aborted {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
-
-      my $expected;
-
-      $expected = 226;
-      $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
-
-      $expected = "Abort successful";
-      $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+      $self->assert_transfer_ok($resp_code, $resp_msg, 1);
 
       eval { $conn->close() };
       $client->quit();
