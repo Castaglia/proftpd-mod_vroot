@@ -439,10 +439,20 @@ static int handle_vroot_alias(void) {
      */
 
     memset(src_path, '\0', sizeof(src_path));
-    sstrncpy(src_path, c->argv[0], sizeof(src_path)-1);
+    ptr = c->argv[0];
+
+    /* Check for any expandable variables. */
+    ptr = path_subst_uservar(tmp_pool, &ptr);
+
+    sstrncpy(src_path, ptr, sizeof(src_path)-1);
     vroot_clean_path(src_path);
 
-    ptr = dir_best_path(tmp_pool, c->argv[1]);
+    ptr = c->argv[1];
+
+    /* Check for any expandable variables. */
+    ptr = path_subst_uservar(tmp_pool, &ptr);
+
+    ptr = dir_best_path(tmp_pool, ptr);
     vroot_lookup_path(NULL, dst_path, sizeof(dst_path)-1, ptr,
       VROOT_LOOKUP_FL_NO_ALIASES, NULL);
 
