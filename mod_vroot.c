@@ -35,8 +35,8 @@
 #define MOD_VROOT_VERSION 	"mod_vroot/0.9.3"
 
 /* Make sure the version of proftpd is as necessary. */
-#if PROFTPD_VERSION_NUMBER < 0x0001030407
-# error "ProFTPD 1.3.4c or later required"
+#if PROFTPD_VERSION_NUMBER < 0x0001030406
+# error "ProFTPD 1.3.4b or later required"
 #endif
 
 static const char *vroot_log = NULL;
@@ -858,6 +858,7 @@ static int vroot_chown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
   return res;
 }
 
+#if PROFTPD_VERSION_NUMBER >= 0x0001030407
 static int vroot_lchown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
   int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
@@ -879,6 +880,7 @@ static int vroot_lchown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
   res = lchown(vpath, uid, gid);
   return res;
 }
+#endif /* ProFTPD 1.3.4c or later */
 
 static int vroot_chroot(pr_fs_t *fs, const char *path) {
   char *chroot_path = "/", *tmp = NULL;
@@ -1298,7 +1300,7 @@ next_dent:
        */
 
       for (i = 0; i < vroot_dir_aliases->nelts; i++) {
-        if (strncmp(dent->d_name, elts[i], dent->d_namlen + 1) == 0) {
+        if (strcmp(dent->d_name, elts[i]) == 0) {
           (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
             "skipping directory entry '%s', as it is aliased", dent->d_name);
           goto next_dent;
@@ -1664,7 +1666,9 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
   fs->truncate = vroot_truncate;
   fs->chmod = vroot_chmod;
   fs->chown = vroot_chown;
+#if PROFTPD_VERSION_NUMBER >= 0x0001030407
   fs->lchown = vroot_lchown;
+#endif /* ProFTPD 1.3.4c or later */
   fs->chdir = vroot_chdir;
   fs->chroot = vroot_chroot;
   fs->utimes = vroot_utimes;
