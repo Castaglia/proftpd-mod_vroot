@@ -749,10 +749,11 @@ static int vroot_symlink(pr_fs_t *fs, const char *path1, const char *path2) {
   return res;
 }
 
-static int vroot_readlink(pr_fs_t *fs, const char *path, char *buf,
+static int vroot_readlink(pr_fs_t *fs, const char *readlink_path, char *buf,
     size_t max) {
   int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
+  char vpath[PR_TUNABLE_PATH_MAX + 1], *path, *alias_path = NULL;
+  pool *tmp_pool;
 
   if (session.curr_phase == LOG_CMD ||
       session.curr_phase == LOG_CMD_ERR ||
@@ -761,13 +762,33 @@ static int vroot_readlink(pr_fs_t *fs, const char *path, char *buf,
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    return readlink(path, buf, max);
+    return readlink(readlink_path, buf, max);
   }
 
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
+  /* In order to find any VRootAlias paths, we need to use the full path.
+   * However, if we do NOT find any VRootAlias, then we do NOT want to use
+   * the full path.
+   */
+
+  tmp_pool = make_sub_pool(session.pool);
+  path = vroot_realpath(tmp_pool, readlink_path, VROOT_REALPATH_FL_ABS_PATH);
+
+  if (vroot_lookup_path(tmp_pool, vpath, sizeof(vpath)-1, path, 0,
+      &alias_path) < 0) {
+    destroy_pool(tmp_pool);
     return -1;
+  }
+
+  if (alias_path == NULL) {
+    if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, readlink_path, 0,
+        NULL) < 0) {
+      destroy_pool(tmp_pool);
+      return -1;
+    }
+  }
 
   res = readlink(vpath, buf, max);
+  destroy_pool(tmp_pool);
   return res;
 }
 
@@ -1277,7 +1298,7 @@ next_dent:
        */
 
       for (i = 0; i < vroot_dir_aliases->nelts; i++) {
-        if (strcmp(dent->d_name, elts[i]) == 0) {
+        if (strncmp(dent->d_name, elts[i], dent->d_namlen + 1) == 0) {
           (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
             "skipping directory entry '%s', as it is aliased", dent->d_name);
           goto next_dent;
