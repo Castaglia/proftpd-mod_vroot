@@ -11465,7 +11465,7 @@ sub vroot_alias_var_u_symlink_dir {
     die($ex);
   }
 
-#  unlink($log_file);
+  unlink($log_file);
 }
 
 1;
