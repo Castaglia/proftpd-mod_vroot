@@ -1609,7 +1609,10 @@ MODRET vroot_pre_mkd(cmd_rec *cmd) {
     return PR_DECLINED(cmd);
   }
 
+#if PROFTPD_VERSION_NUMBER >= 0x0001030407
   vroot_use_mkdtemp = pr_fsio_set_use_mkdtemp(FALSE);
+#endif /* ProFTPD 1.3.4c or later */
+
   return PR_DECLINED(cmd);
 }
 
@@ -1619,7 +1622,10 @@ MODRET vroot_post_mkd(cmd_rec *cmd) {
     return PR_DECLINED(cmd);
   }
 
+#if PROFTPD_VERSION_NUMBER >= 0x0001030407
   pr_fsio_set_use_mkdtemp(vroot_use_mkdtemp);
+#endif /* ProFTPD 1.3.4c or later */
+
   return PR_DECLINED(cmd);
 }
 
