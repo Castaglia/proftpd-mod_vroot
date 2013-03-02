@@ -53,7 +53,9 @@ static pr_table_t *vroot_aliastab = NULL;
 static pool *vroot_dir_pool = NULL;
 static pr_table_t *vroot_dirtab = NULL;
 
+#if PROFTPD_VERSION_NUMBER >= 0x0001030407
 static int vroot_use_mkdtemp = FALSE;
+#endif /* ProFTPD 1.3.4c or later */
 
 static unsigned int vroot_opts = 0;
 #define	VROOT_OPT_ALLOW_SYMLINKS	0x0001
@@ -194,12 +196,12 @@ static void vroot_clean_path(char *path) {
 }
 
 static char *vroot_realpath(pool *p, const char *path, int flags) {
-  char *real_path;
+  char *real_path = NULL;
   size_t real_pathlen;
 
   if (flags & VROOT_REALPATH_FL_ABS_PATH) {
     /* If not an absolute path, prepend the current location. */
-    if (*real_path != '/') {
+    if (*path != '/') {
       real_path = pdircat(p, pr_fs_getvwd(), path, NULL);
 
     } else {
