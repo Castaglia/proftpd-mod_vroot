@@ -88,7 +88,7 @@ static void strmove(register char *dst, register const char *src) {
 }
 
 static void vroot_clean_path(char *path) {
-  char *p;
+  char *p = NULL;
 
   if (path == NULL ||
       *path == 0) {
@@ -285,7 +285,7 @@ loop:
 
   } else if (*bufp != '\0') {
     size_t buflen, tmplen;
-    char *ptr;
+    char *ptr = NULL;
 
     ptr = strstr(bufp, "..");
     if (ptr != NULL) {
@@ -348,7 +348,7 @@ loop:
       start_ptr = path;
 
       while (start_ptr != NULL) {
-        char *ptr;
+        char *ptr = NULL;
 
         pr_signals_handle();
 
@@ -422,7 +422,7 @@ static int vroot_is_alias(const char *path) {
 
 static int handle_vroot_alias(void) {
   config_rec *c;
-  pool *tmp_pool;
+  pool *tmp_pool = NULL;
 
   /* Handle any VRootAlias settings. */
 
@@ -511,7 +511,7 @@ static int handle_vroot_alias(void) {
 
 static int vroot_stat(pr_fs_t *fs, const char *stat_path, struct stat *st) {
   int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path;
+  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
   pool *tmp_pool = NULL;
 
   if (session.curr_phase == LOG_CMD ||
@@ -539,7 +539,7 @@ static int vroot_stat(pr_fs_t *fs, const char *stat_path, struct stat *st) {
 
 static int vroot_lstat(pr_fs_t *fs, const char *orig_path, struct stat *st) {
   int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path;
+  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
   size_t pathlen = 0;
   pool *tmp_pool = NULL;
 
@@ -754,8 +754,8 @@ static int vroot_symlink(pr_fs_t *fs, const char *path1, const char *path2) {
 static int vroot_readlink(pr_fs_t *fs, const char *readlink_path, char *buf,
     size_t max) {
   int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path, *alias_path = NULL;
-  pool *tmp_pool;
+  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL, *alias_path = NULL;
+  pool *tmp_pool = NULL;
 
   if (session.curr_phase == LOG_CMD ||
       session.curr_phase == LOG_CMD_ERR ||
@@ -1041,8 +1041,8 @@ static int vroot_chdir(pr_fs_t *fs, const char *path) {
 static int vroot_utimes(pr_fs_t *fs, const char *utimes_path,
     struct timeval *tvs) {
   int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path;
-  pool *tmp_pool;
+  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
+  pool *tmp_pool = NULL;
 
   if (session.curr_phase == LOG_CMD ||
       session.curr_phase == LOG_CMD_ERR ||
@@ -1087,8 +1087,8 @@ static int vroot_dir_idx = -1;
 
 static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
     void *value_data, size_t value_datasz, void *user_data) {
-  const char *alias_path, *dir_path, *real_path;
-  char *ptr;
+  const char *alias_path = NULL, *dir_path = NULL, *real_path = NULL;
+  char *ptr = NULL;
 
   alias_path = key_data;
   real_path = value_data;
@@ -1144,8 +1144,8 @@ static unsigned int vroot_dirtab_hash_cb(const void *key, size_t keysz) {
 
 static void *vroot_opendir(pr_fs_t *fs, const char *orig_path) {
   int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path;
-  void *dirh;
+  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
+  void *dirh = NULL;
   struct stat st;
   size_t pathlen = 0;
   pool *tmp_pool = NULL;
@@ -1277,7 +1277,7 @@ static void *vroot_opendir(pr_fs_t *fs, const char *orig_path) {
 }
 
 static struct dirent *vroot_readdir(pr_fs_t *fs, void *dirh) {
-  struct dirent *dent;
+  struct dirent *dent = NULL;
 
 next_dent:
   dent = readdir((DIR *) dirh);
