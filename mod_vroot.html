@@ -196,8 +196,23 @@ the <code>mod_vroot.c</code> file into:
 Then follow the normal steps for using third-party modules in proftpd:
 <pre>
   ./configure --with-modules=mod_vroot
+</pre>
+To build <code>mod_vroot</code> as a DSO module:
+<pre>
+  ./configure --enable-dso --with-shared=mod_vroot
+</pre>
+Then follow the usual steps:
+<pre>
   make
   make install
+</pre>
+
+<p>
+For those with an existing ProFTPD installation, you can use the
+<code>prxs</code> tool to add <code>mod_vroot</code>, as a DSO module, to
+your existing server:
+<pre>
+  # prxs -c -i -d mod_vroot.c
 </pre>
 
 <p>
