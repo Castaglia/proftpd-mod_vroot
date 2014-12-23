@@ -333,10 +333,35 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
+  # See:
+  #  https://github.com/Castaglia/proftpd-mod_vroot/issues/4
+  vroot_alias_bad_src_dst_check_bug4 => {
+    order => ++$order,
+    test_class => [qw(bug forking)],
+  },
+
+  # See:
+  #  https://github.com/Castaglia/proftpd-mod_vroot/issues/5
+  vroot_alias_bad_alias_dirscan_bug5 => {
+    order => ++$order,
+    test_class => [qw(bug forking)],
+  },
+
+  # See:
+  #  https://github.com/proftpd/proftpd/issues/59
+  vroot_alias_enametoolong_bug59 => {
+    order => ++$order,
+    test_class => [qw(bug forking)],
+  },
+
 };
 
 sub new {
   return shift()->SUPER::new(@_);
+}
+
+sub tear_down {
+  rmtree('/tmp/vroot.d');
 }
 
 sub list_tests {
@@ -1217,7 +1242,7 @@ sub vroot_symlink {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'fsio:10',
+    Trace => 'fsio:10 vroot:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -1252,6 +1277,8 @@ sub vroot_symlink {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
+      sleep(1);
+
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
       $client->login($user, $passwd);
 
@@ -1307,7 +1334,7 @@ sub vroot_symlink {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($config_file, $rfh, 15) };
     if ($@) {
       warn($@);
       exit 1;
@@ -12011,6 +12038,580 @@ sub vroot_alias_var_u_symlink_dir {
       my $mode = 'drwxr-xr-x';
       $self->assert($mode eq $res->{'proftpd.lnk'},
         test_msg("Expected '$mode' for 'proftpd.lnk', got '$res->{'proftpd.lnk'}'"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) { warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub vroot_alias_bad_src_dst_check_bug4 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/vroot.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs("$tmpdir/$user");
+  mkpath($home_dir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # In order for the real /tmp/vroot.d directory to be visible, via
+  # VRootAlias, within the vroot, the leading /tmp directory needs to
+  # actually exist with the vroot.  In other words, the path needs to be
+  # real, even if the leaf is virtual.
+  my $user_tmpdir = File::Spec->rel2abs("$home_dir/tmp");
+  mkpath($user_tmpdir);
+
+  my $test_dir = File::Spec->rel2abs("/tmp/vroot.d");
+  mkpath($test_dir);
+
+  my $test_file = File::Spec->rel2abs("$test_dir/test.txt");
+  if (open(my $fh, "> $test_file")) {
+    close($fh);
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir, $user_tmpdir, $test_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir, $user_tmpdir, $test_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'fsio:20 vroot:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    ShowSymlinks => 'off',
+
+    IfModules => {
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $log_file,
+        DefaultRoot => '~',
+
+        VRootAlias => "$test_dir ~/tmp/vroot.d",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my ($resp_code, $resp_msg) = $client->pwd();
+
+      my $expected;
+
+      $expected = 257;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected $expected, got $resp_code"));
+
+      $expected = "\"/\" is the current directory";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected '$expected', got '$resp_msg'"));
+
+      $client->cwd('/tmp/vroot.d');
+
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 5);
+      eval { $conn->close() };
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/\n/, $buf)];
+      foreach my $line (@$lines) {
+        if ($line =~ /^(\S+)\s+\d+\s+\S+\s+\S+\s+.*?\s+(\S+)$/) {
+          $res->{$2} = $1;
+        }
+      }
+
+      unless (scalar(keys(%$res)) > 0) {
+        die("LIST data unexpectedly empty");
+      }
+
+      $expected = {
+        'test.txt' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in LIST data")
+      }
+
+      my $mode = '-rw-r--r--';
+      $self->assert($mode eq $res->{'test.txt'},
+        test_msg("Expected '$mode' for 'test.txt', got '$res->{'test.txt'}'"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) { warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub vroot_alias_bad_alias_dirscan_bug5 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/vroot.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs("$tmpdir/$user");
+  mkpath($home_dir);
+  my $uid = 500;
+  my $gid = 500;
+
+  # In order for the real /tmp/vroot.d directory to be visible, via
+  # VRootAlias, within the vroot, the leading /tmp directory needs to
+  # actually exist with the vroot.  In other words, the path needs to be
+  # real, even if the leaf is virtual.
+  my $user_tmpdir = File::Spec->rel2abs("$home_dir/tmp");
+  mkpath($user_tmpdir);
+
+  my $test_dir = File::Spec->rel2abs("/tmp/vroot.d");
+  mkpath($test_dir);
+
+  my $test_file = File::Spec->rel2abs("$test_dir/test.txt");
+  if (open(my $fh, "> $test_file")) {
+    close($fh);
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir, $user_tmpdir, $test_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir, $user_tmpdir, $test_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'fsio:20 vroot:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    ShowSymlinks => 'off',
+
+    IfModules => {
+      'mod_vroot.c' => [
+        'VRootEngine on',
+        "VRootLog $log_file",
+        'DefaultRoot ~',
+        "VRootAlias $test_dir ~/vroot.d",
+        "VRootAlias $test_dir ~/tmp/vroot.d",
+      ],
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my ($resp_code, $resp_msg) = $client->pwd();
+
+      my $expected;
+
+      $expected = 257;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected $expected, got $resp_code"));
+
+      $expected = "\"/\" is the current directory";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected '$expected', got '$resp_msg'"));
+
+      $client->cwd('/tmp');
+
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 5);
+      eval { $conn->close() };
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/\n/, $buf)];
+      foreach my $line (@$lines) {
+        if ($line =~ /^(\S+)\s+\d+\s+\S+\s+\S+\s+.*?\s+(\S+)$/) {
+          $res->{$2} = $1;
+        }
+      }
+
+      unless (scalar(keys(%$res)) > 0) {
+        die("LIST data unexpectedly empty");
+      }
+
+      $expected = {
+        'vroot.d' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in LIST data")
+      }
+
+      my $mode = 'drwxr-xr-x';
+      $self->assert($mode eq $res->{'vroot.d'},
+        test_msg("Expected '$mode' for 'vroot.d', got '$res->{'vroot.d'}'"));
+
+      $client->quit();
+    };
+
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($config_file, $rfh) };
+    if ($@) { warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($pid_file);
+
+  $self->assert_child_ok($pid);
+
+  if ($ex) {
+    test_append_logfile($log_file, $ex);
+    unlink($log_file);
+
+    die($ex);
+  }
+
+  unlink($log_file);
+}
+
+sub vroot_alias_enametoolong_bug59 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  my $config_file = "$tmpdir/vroot.conf";
+  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
+  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
+
+  my $log_file = test_get_logfile();
+
+  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
+  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
+
+  my $user = 'proftpd';
+  my $passwd = 'test';
+  my $group = 'ftpd';
+  my $home_dir = File::Spec->rel2abs("$tmpdir/$user");
+  mkpath($home_dir);
+  my $uid = 500;
+  my $gid = 500;
+
+  my $test_dir = File::Spec->rel2abs("/tmp/vroot.d/0001a/10001a/encoding/input");
+  mkpath($test_dir);
+
+  my $test_file = File::Spec->rel2abs("$test_dir/asgard");
+  if (open(my $fh, "> $test_file")) {
+    close($fh);
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  # Make sure that, if we're running as root, that the home directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $home_dir, $test_dir)) {
+      die("Can't set perms on $home_dir to 0755: $!");
+    }
+
+    unless (chown($uid, $gid, $home_dir, $test_dir)) {
+      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    }
+  }
+
+  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
+    '/bin/bash');
+  auth_group_write($auth_group_file, $group, $gid, $user);
+
+  my $config = {
+    PidFile => $pid_file,
+    ScoreboardFile => $scoreboard_file,
+    SystemLog => $log_file,
+    TraceLog => $log_file,
+    Trace => 'fsio:20 vroot:20',
+
+    AuthUserFile => $auth_user_file,
+    AuthGroupFile => $auth_group_file,
+    ShowSymlinks => 'off',
+
+    IfModules => {
+      'mod_vroot.c' => [
+        'VRootEngine on',
+        "VRootLog $log_file",
+        'DefaultRoot ~',
+        "VRootAlias /tmp ~/tmp-vroot-alias",
+        "VRootAlias $test_dir ~/0001a-input",
+      ],
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($user, $passwd);
+
+      my ($resp_code, $resp_msg) = $client->pwd();
+
+      my $expected;
+
+      $expected = 257;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected $expected, got $resp_code"));
+
+      $expected = "\"/\" is the current directory";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected '$expected', got '$resp_msg'"));
+
+      my $conn = $client->mlsd_raw('0001a-input');
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 30);
+      eval { $conn->close() };
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/\n/, $buf)];
+      foreach my $line (@$lines) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.mode=\d+;UNIX.owner=\d+; (.*?)$/) {
+          $res->{$1} = 1;
+        }
+      }
+
+      unless (scalar(keys(%$res)) > 0) {
+        die("MLSD data unexpectedly empty");
+      }
+
+      $expected = {
+        '.' => 1,
+        '..' => 1,
+        'asgard' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in MLSD data")
+      }
 
       $client->quit();
     };

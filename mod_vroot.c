@@ -2,7 +2,7 @@
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
  *
- * Copyright (c) 2002-2013 TJ Saunders
+ * Copyright (c) 2002-2014 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,7 +32,7 @@
 #include "conf.h"
 #include "privs.h"
 
-#define MOD_VROOT_VERSION 	"mod_vroot/0.9.3"
+#define MOD_VROOT_VERSION 	"mod_vroot/0.9.4"
 
 /* Make sure the version of proftpd is as necessary. */
 #if PROFTPD_VERSION_NUMBER < 0x0001030406
@@ -344,7 +344,6 @@ loop:
        * aliases are found.
        */
       bufp = buf;
-
       start_ptr = path;
 
       while (start_ptr != NULL) {
@@ -430,8 +429,7 @@ static int handle_vroot_alias(void) {
 
   c = find_config(main_server->conf, CONF_PARAM, "VRootAlias", FALSE);
   while (c) {
-    char src_path[PR_TUNABLE_PATH_MAX+1], dst_path[PR_TUNABLE_PATH_MAX+1],
-      vpath[PR_TUNABLE_PATH_MAX+1], *ptr;
+    char src_path[PR_TUNABLE_PATH_MAX+1], dst_path[PR_TUNABLE_PATH_MAX+1], *ptr;
 
     pr_signals_handle();
 
@@ -457,21 +455,6 @@ static int handle_vroot_alias(void) {
     ptr = dir_best_path(tmp_pool, ptr);
     vroot_lookup_path(NULL, dst_path, sizeof(dst_path)-1, ptr,
       VROOT_LOOKUP_FL_NO_ALIASES, NULL);
-
-    /* If the vroot of the source path matches the vroot of the destination
-     * path, then we have a badly configured VRootAlias, one which is trying
-     * to override itself.  Need to check for, and reject, such cases.
-     */
-    vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, src_path,
-      VROOT_LOOKUP_FL_NO_ALIASES, NULL);
-    if (strcmp(dst_path, vpath) == 0) {
-      (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-        "alias '%s' maps to its real path '%s' inside the vroot, "
-        "ignoring bad alias", dst_path, src_path);
-
-      c = find_config_next(c, c->next, CONF_PARAM, "VRootAlias", FALSE);
-      continue;
-    }
 
     if (vroot_alias_pool == NULL) {
       vroot_alias_pool = make_sub_pool(session.pool);
@@ -1089,6 +1072,7 @@ static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
     void *value_data, size_t value_datasz, void *user_data) {
   const char *alias_path = NULL, *dir_path = NULL, *real_path = NULL;
   char *ptr = NULL;
+  size_t dir_pathlen;
 
   alias_path = key_data;
   real_path = value_data;
@@ -1109,15 +1093,12 @@ static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
     return 0;
   }
 
-  /* If the length from the start of the alias path to the last occurring
-   * slash is longer than the length of the directory path, then this
-   * alias obviously does not occur in this directory.
-   */
-  if ((ptr - alias_path) > strlen(dir_path)) {
-    return 0;
-  }
+  dir_pathlen = strlen(dir_path);
 
-  if (strncmp(dir_path, alias_path, (ptr - alias_path)) == 0) {
+  if (strncmp(dir_path, alias_path, dir_pathlen) == 0) {
+    pr_trace_msg(trace_channel, 17,
+      "adding VRootAlias '%s' to list of aliases contained in '%s'",
+      alias_path, dir_path);
     *((char **) push_array(vroot_dir_aliases)) = pstrdup(vroot_dir_pool,
       ptr + 1);
   }
@@ -1127,7 +1108,7 @@ static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
 
 static int vroot_dirtab_keycmp_cb(const void *key1, size_t keysz1,
     const void *key2, size_t keysz2) {
-  unsigned int k1, k2;
+  unsigned long k1, k2;
 
   memcpy(&k1, key1, sizeof(k1));
   memcpy(&k2, key2, sizeof(k2));
@@ -1136,7 +1117,7 @@ static int vroot_dirtab_keycmp_cb(const void *key1, size_t keysz1,
 }
 
 static unsigned int vroot_dirtab_hash_cb(const void *key, size_t keysz) {
-  unsigned int h;
+  unsigned long h;
 
   memcpy(&h, key, sizeof(h));
   return h;
@@ -1217,7 +1198,7 @@ static void *vroot_opendir(pr_fs_t *fs, const char *orig_path) {
   }
 
   if (vroot_aliastab != NULL) {
-    unsigned int *cache_dirh;
+    unsigned long *cache_dirh = NULL;
 
     if (vroot_dirtab == NULL) {
       vroot_dir_pool = make_sub_pool(session.pool);
@@ -1235,10 +1216,10 @@ static void *vroot_opendir(pr_fs_t *fs, const char *orig_path) {
         vroot_dirtab_keycmp_cb);
     }
 
-    cache_dirh = palloc(vroot_dir_pool, sizeof(unsigned int));
-    *cache_dirh = (unsigned int) dirh;
+    cache_dirh = palloc(vroot_dir_pool, sizeof(unsigned long));
+    *cache_dirh = (unsigned long) dirh;
 
-    if (pr_table_kadd(vroot_dirtab, cache_dirh, sizeof(unsigned int),
+    if (pr_table_kadd(vroot_dirtab, cache_dirh, sizeof(unsigned long),
         pstrdup(vroot_dir_pool, vpath), strlen(vpath) + 1) < 0) {
       (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
         "error stashing path '%s' (key %p) in directory table: %s", vpath,
@@ -1339,11 +1320,11 @@ static int vroot_closedir(pr_fs_t *fs, void *dirh) {
   res = closedir((DIR *) dirh);
 
   if (vroot_dirtab != NULL) {
-    unsigned int lookup_dirh;
+    unsigned long lookup_dirh;
     int count;
 
-    lookup_dirh = (unsigned int) dirh;
-    (void) pr_table_kremove(vroot_dirtab, &lookup_dirh, sizeof(unsigned int),
+    lookup_dirh = (unsigned long) dirh;
+    (void) pr_table_kremove(vroot_dirtab, &lookup_dirh, sizeof(unsigned long),
       NULL);
 
     /* If the dirtab table is empty, destroy the table. */
