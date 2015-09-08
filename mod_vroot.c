@@ -2,7 +2,7 @@
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
  *
- * Copyright (c) 2002-2014 TJ Saunders
+ * Copyright (c) 2002-2015 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,8 +25,6 @@
  *
  * This is mod_vroot, contrib software for proftpd 1.2 and above.
  * For more information contact TJ Saunders <tj@castaglia.org>.
- *
- * $Id: mod_vroot.c,v 1.24 2011/01/11 02:41:10 tj Exp tj $
  */
 
 #include "conf.h"
@@ -35,8 +33,8 @@
 #define MOD_VROOT_VERSION 	"mod_vroot/0.9.4"
 
 /* Make sure the version of proftpd is as necessary. */
-#if PROFTPD_VERSION_NUMBER < 0x0001030406
-# error "ProFTPD 1.3.4b or later required"
+#if PROFTPD_VERSION_NUMBER < 0x0001030602
+# error "ProFTPD 1.3.6rc2 or later required"
 #endif
 
 static const char *vroot_log = NULL;
@@ -1490,22 +1488,25 @@ MODRET set_vrootoptions(cmd_rec *cmd) {
 MODRET set_vrootserverroot(cmd_rec *cmd) {
   struct stat st;
   config_rec *c;
+  char *path;
   size_t pathlen;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  if (pr_fs_valid_path(cmd->argv[1]) < 0)
+  path = cmd->argv[1];
+
+  if (pr_fs_valid_path(path) < 0)
     CONF_ERROR(cmd, "must be an absolute path");
 
-  if (stat(cmd->argv[1], &st) < 0) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error checking '", cmd->argv[1],
-      "': ", strerror(errno), NULL));
+  if (stat(path, &st) < 0) {
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error checking '", path, "': ",
+      strerror(errno), NULL));
   }
 
   if (!S_ISDIR(st.st_mode)) {
-    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", cmd->argv[1],
-      "' is not a directory", NULL));
+    CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "'", path, "' is not a directory",
+      NULL));
   }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
@@ -1514,12 +1515,12 @@ MODRET set_vrootserverroot(cmd_rec *cmd) {
    * This is important.
    */
  
-  pathlen = strlen(cmd->argv[1]);
-  if (cmd->argv[1][pathlen - 1] != '/') {
-    c->argv[0] = pstrcat(c->pool, cmd->argv[1], "/", NULL);
+  pathlen = strlen(path);
+  if (path[pathlen - 1] != '/') {
+    c->argv[0] = pstrcat(c->pool, path, "/", NULL);
 
   } else {
-    c->argv[0] = pstrdup(c->pool, cmd->argv[1]);
+    c->argv[0] = pstrdup(c->pool, path);
   }
 
   return PR_HANDLED(cmd);
