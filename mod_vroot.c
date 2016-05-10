@@ -1,8 +1,7 @@
 /*
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
- *
- * Copyright (c) 2002-2015 TJ Saunders
+ * Copyright (c) 2002-2016 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +22,7 @@
  * resulting executable, without including the source code for OpenSSL in the
  * source distribution.
  *
- * This is mod_vroot, contrib software for proftpd 1.2 and above.
+ * This is mod_vroot, contrib software for proftpd 1.3.x and above.
  * For more information contact TJ Saunders <tj@castaglia.org>.
  */
 
@@ -40,7 +39,6 @@
 static const char *vroot_log = NULL;
 static int vroot_logfd = -1;
 
-static char vroot_cwd[PR_TUNABLE_PATH_MAX + 1];
 static char vroot_base[PR_TUNABLE_PATH_MAX + 1];
 static size_t vroot_baselen = 0;
 static unsigned char vroot_engine = FALSE;
@@ -336,7 +334,8 @@ loop:
   if (!(flags & VROOT_LOOKUP_FL_NO_ALIASES)) {
     /* Check to see if this path is an alias; if so, return the real path. */
     if (vroot_aliastab != NULL) {
-      char *start_ptr = NULL, *end_ptr = NULL, *src_path = NULL;
+      char *start_ptr = NULL, *end_ptr = NULL;
+      const char *src_path = NULL;
 
       /* buf is used here for storing the "suffix", to be appended later when
        * aliases are found.
@@ -426,8 +425,9 @@ static int handle_vroot_alias(void) {
   tmp_pool = make_sub_pool(session.pool);
 
   c = find_config(main_server->conf, CONF_PARAM, "VRootAlias", FALSE);
-  while (c) {
-    char src_path[PR_TUNABLE_PATH_MAX+1], dst_path[PR_TUNABLE_PATH_MAX+1], *ptr;
+  while (c != NULL) {
+    char src_path[PR_TUNABLE_PATH_MAX+1], dst_path[PR_TUNABLE_PATH_MAX+1];
+    const char *ptr;
 
     pr_signals_handle();
 
@@ -656,6 +656,7 @@ static int vroot_open(pr_fh_t *fh, const char *path, int flags) {
   return res;
 }
 
+#if PROFTPD_VERSION_NUMBER < 0x0001030603
 static int vroot_creat(pr_fh_t *fh, const char *path, mode_t mode) {
   int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
@@ -677,6 +678,7 @@ static int vroot_creat(pr_fh_t *fh, const char *path, mode_t mode) {
   res = creat(vpath, mode);
   return res;
 }
+#endif /* ProFTPD 1.3.6rc2 or earlier */
 
 static int vroot_link(pr_fs_t *fs, const char *path1, const char *path2) {
   int res;
@@ -955,7 +957,7 @@ static int vroot_chroot(pr_fs_t *fs, const char *path) {
   }
 
   vroot_baselen = strlen(vroot_base);
-  if (vroot_baselen >= sizeof(vroot_cwd)) {
+  if (vroot_baselen >= PR_TUNABLE_PATH_MAX) {
     errno = ENAMETOOLONG;
     return -1;
   }
@@ -1067,7 +1069,7 @@ static array_header *vroot_dir_aliases = NULL;
 static int vroot_dir_idx = -1;
 
 static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
-    void *value_data, size_t value_datasz, void *user_data) {
+    const void *value_data, size_t value_datasz, void *user_data) {
   const char *alias_path = NULL, *dir_path = NULL, *real_path = NULL;
   char *ptr = NULL;
   size_t dir_pathlen;
@@ -1530,8 +1532,7 @@ MODRET set_vrootserverroot(cmd_rec *cmd) {
  */
 
 MODRET vroot_log_retr(cmd_rec *cmd) {
-  const char *key;
-  char *path;
+  const char *key, *path;
 
   if (vroot_engine == FALSE ||
       session.chroot_path == NULL) {
@@ -1559,8 +1560,7 @@ MODRET vroot_log_retr(cmd_rec *cmd) {
 }
 
 MODRET vroot_log_stor(cmd_rec *cmd) {
-  const char *key;
-  char *path;
+  const char *key, *path;
 
   if (vroot_engine == FALSE ||
       session.chroot_path == NULL) {
@@ -1649,7 +1649,9 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
   fs->rename = vroot_rename;
   fs->unlink = vroot_unlink;
   fs->open = vroot_open;
+#if PROFTPD_VERSION_NUMBER < 0x0001030603
   fs->creat = vroot_creat;
+#endif /* ProFTPD 1.3.6rc2 or earlier */
   fs->link = vroot_link;
   fs->readlink = vroot_readlink;
   fs->symlink = vroot_symlink;
