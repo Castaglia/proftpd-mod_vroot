@@ -1,0 +1,31 @@
+env: TRAVIS_CI=true
+language: c
+
+compiler:
+  - gcc
+  - clang
+
+install:
+  # for unit tests
+  - sudo apt-get install -y check
+  # for static code analysis
+  - sudo apt-get install -y cppcheck rats
+  # for test code coverage
+  - sudo apt-get install -y lcov
+  - gem install coveralls-lcov
+
+before_script:
+  - cd ${TRAVIS_BUILD_DIR}
+  - lcov --directory . --zerocounters
+
+script:
+  # - find . -type f -name "*.c" -print | grep -v t\/ | xargs cppcheck 2>&1
+  # - find . -type f -name "*.c" -print | grep -v t\/ | xargs rats --language=c
+  - git clone https://github.com/proftpd/proftpd.git
+  - cp mod_vroot.c proftpd/contrib/
+  - cd proftpd
+  - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_vroot
+  - make
+  - make clean
+  - ./configure --enable-devel=coverage --enable-tests --with-modules=mod_vroot
+  - make
