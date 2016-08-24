@@ -868,7 +868,7 @@ static int vroot_lchown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
 #endif /* ProFTPD 1.3.4c or later */
 
 static int vroot_chroot(pr_fs_t *fs, const char *path) {
-  char *chroot_path = "/", *tmp = NULL;
+  char *chroot_path = vroot_base, *tmp = NULL;
   config_rec *c;
 
   if (!path ||
@@ -962,7 +962,9 @@ static int vroot_chroot(pr_fs_t *fs, const char *path) {
     return -1;
   }
 
-  session.chroot_path = pstrdup(session.pool, chroot_path);
+  if (chroot_path && chroot_path[0])
+    session.chroot_path = pstrdup(session.pool, chroot_path);
+
   return 0;
 }
 
