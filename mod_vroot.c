@@ -1838,7 +1838,7 @@ static cmdtable vroot_cmdtab[] = {
    * the path before the log record is written. By moving to the CMD phase,
    * The log records are corrected.
    */
-  { CMD,                C_APPE, G_NONE, vroot_log_retr, FALSE, FALSE },
+  { CMD,                C_APPE, G_NONE, vroot_log_stor, FALSE, FALSE },
   { CMD,                C_RETR, G_NONE, vroot_log_retr, FALSE, FALSE },
   { CMD,                C_STOR, G_NONE, vroot_log_stor, FALSE, FALSE },
 
