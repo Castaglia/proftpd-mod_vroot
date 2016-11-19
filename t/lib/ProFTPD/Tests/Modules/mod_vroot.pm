@@ -284,17 +284,15 @@ my $TESTS = {
     test_class => [qw(forking)],
   },
 
-  # XXX Currently does not work, since TransferLog logging can't be filtered
-#  vroot_log_xferlog_retr => {
-#    order => ++$order,
-#    test_class => [qw(inprogress forking)],
-#  },
+  vroot_log_xferlog_retr => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
 
-  # XXX Currently does not work, since TransferLog logging can't be filtered
-#  vroot_log_xferlog_stor => {
-#    order => ++$order,
-#    test_class => [qw(inprogress forking)],
-#  },
+  vroot_log_xferlog_stor => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
 
   # XXX Currently does not work due to <Directory> matching logic, and to
   # mod_vroot's session.chroot_path machinations.
@@ -10662,7 +10660,6 @@ sub vroot_log_xferlog_stor {
   auth_group_write($auth_group_file, $group, $gid, $user);
 
   my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
-
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
 
   my $config = {
