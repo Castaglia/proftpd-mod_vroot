@@ -23,7 +23,13 @@ script:
   # - find . -type f -name "*.c" -print | grep -v t\/ | xargs cppcheck 2>&1
   # - find . -type f -name "*.c" -print | grep -v t\/ | xargs rats --language=c
   - git clone https://github.com/proftpd/proftpd.git
-  - cp mod_vroot.c proftpd/contrib/
+  - mkdir -p proftpd/contrib/mod_vroot/
+  - cp *.[ch] proftpd/contrib/mod_vroot/
+  - cp mod_vroot.* proftpd/contrib/mod_vroot/
+  - cp Makefile.in proftpd/contrib/mod_vroot/
+  - cp config* proftpd/contrib/mod_vroot/
+  - cp install-sh proftpd/contrib/mod_vroot/
+  - cp -R t/ proftpd/contrib/mod_vroot/t/
   - cd proftpd
   - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_vroot
   - make

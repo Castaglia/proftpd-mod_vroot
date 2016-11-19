@@ -24,405 +24,36 @@
  *
  * This is mod_vroot, contrib software for proftpd 1.3.x and above.
  * For more information contact TJ Saunders <tj@castaglia.org>.
+ *
+ * -----DO NOT EDIT BELOW THIS LINE-----
+ * $Archive: mod_vroot.a $
  */
 
-#include "conf.h"
+#include "mod_vroot.h"
 #include "privs.h"
+#include "alias.h"
+#include "path.h"
+#include "fsio.h"
 
-#define MOD_VROOT_VERSION 	"mod_vroot/0.9.4"
+int vroot_logfd = -1;
+unsigned int vroot_opts = 0;
 
-/* Make sure the version of proftpd is as necessary. */
-#if PROFTPD_VERSION_NUMBER < 0x0001030602
-# error "ProFTPD 1.3.6rc2 or later required"
-#endif
+module vroot_module;
 
-static const char *vroot_log = NULL;
-static int vroot_logfd = -1;
-
-static char vroot_base[PR_TUNABLE_PATH_MAX + 1];
-static size_t vroot_baselen = 0;
-static unsigned char vroot_engine = FALSE;
-
-static pool *vroot_alias_pool = NULL;
-static pr_table_t *vroot_aliastab = NULL;
-
-static pool *vroot_dir_pool = NULL;
-static pr_table_t *vroot_dirtab = NULL;
+static int vroot_engine = FALSE;
 
 #if PROFTPD_VERSION_NUMBER >= 0x0001030407
 static int vroot_use_mkdtemp = FALSE;
 #endif /* ProFTPD 1.3.4c or later */
 
-static unsigned int vroot_opts = 0;
-#define	VROOT_OPT_ALLOW_SYMLINKS	0x0001
-
-/* vroot_realpath() flags */
-#define VROOT_REALPATH_FL_ABS_PATH	0x001
-
-/* vroot_lookup_path() flags */
-#define VROOT_LOOKUP_FL_NO_ALIASES	0x0001
-
-static const char *trace_channel = "vroot";
-
-static int vroot_is_alias(const char *);
-
-/* Support routines note: some of these support functions are borrowed from
- * pure-ftpd.
- */
-
-static void strmove(register char *dst, register const char *src) {
-  if (dst == NULL ||
-      src == NULL) {
-    return;
-  }
-
-  while (*src != 0) {
-    *dst++ = *src++;
-  }
-
-  *dst = 0;
-}
-
-static void vroot_clean_path(char *path) {
-  char *p = NULL;
-
-  if (path == NULL ||
-      *path == 0) {
-      return;
-  }
-
-  while ((p = strstr(path, "//")) != NULL) {
-    strmove(p, p + 1);
-  }
-
-  while ((p = strstr(path, "/./")) != NULL) {
-    strmove(p, p + 2);
-  }
-
-  while (strncmp(path, "../", 3) == 0) {
-    path += 3;
-  }
-
-  p = strstr(path, "/../");
-  if (p != NULL) {
-    if (p == path) {
-      while (strncmp(path, "/../", 4) == 0) {
-        strmove(path, path + 3);
-      }
-
-      p = strstr(path, "/../");
-    }
-
-    while (p != NULL) {
-      char *next_elem = p + 4;
-
-      if (p != path &&
-          *p == '/') {
-        p--;
-      }
-
-      while (p != path &&
-             *p != '/') {
-        p--;
-      }
-
-      if (*p == '/') {
-        p++;
-      }
-
-      strmove(p, next_elem);
-      p = strstr(path, "/../");
-    }
-  }
-
-  p = path;
-
-  if (*p == '.') {
-    p++;
-
-    if (*p == '\0') {
-      return;
-    }
-
-    if (*p == '/') {
-      while (*p == '/') {
-        p++;
-      }
-
-      strmove(path, p);
-    }
-  }
-
-  if (*p == '\0') {
-    return;
-  }
-
-  p = path + strlen(path) - 1;
-  if (*p != '.' ||
-      p == path) {
-    return;
-  }
-
-  p--;
-  if (*p == '/' ||
-      p == path) {
-    p[1] = '\0';
-    return;
-  }
-
-  if (*p != '.' ||
-      p == path) {
-    return;
-  }
-
-  p--;
-  if (*p != '/') {
-    return;
-  }
-
-  *p = '\0';
-  p = strrchr(path, '/');
-  if (p == NULL) {
-    *path = '/';
-    path[1] = '\0';
-    return;
-  }
-
-  p[1] = '\0';
-}
-
-static char *vroot_realpath(pool *p, const char *path, int flags) {
-  char *real_path = NULL;
-  size_t real_pathlen;
-
-  if (flags & VROOT_REALPATH_FL_ABS_PATH) {
-    /* If not an absolute path, prepend the current location. */
-    if (*path != '/') {
-      real_path = pdircat(p, pr_fs_getvwd(), path, NULL);
-
-    } else {
-      real_path = pstrdup(p, path);
-    }
-
-  } else {
-    real_path = pstrdup(p, path);
-  }
-
-  vroot_clean_path(real_path);
-
-  /* If the given path ends in a slash, remove it.  The handling of
-   * VRootAliases is sensitive to such things.
-   */
-  real_pathlen = strlen(real_path);
-  if (real_pathlen > 1 &&
-      real_path[real_pathlen-1] == '/') {
-    real_path[real_pathlen-1] = '\0';
-    real_pathlen--;
-  }
-
-  return real_path;
-}
-
-static int vroot_lookup_path(pool *p, char *path, size_t pathlen,
-    const char *dir, int flags, char **alias_path) {
-  char buf[PR_TUNABLE_PATH_MAX + 1], *bufp = NULL;
-
-  memset(buf, '\0', sizeof(buf));
-  memset(path, '\0', pathlen);
-
-  if (strcmp(dir, ".") != 0) {
-    sstrncpy(buf, dir, sizeof(buf));
-
-  } else {
-    sstrncpy(buf, pr_fs_getcwd(), sizeof(buf));
-  }
-
-  vroot_clean_path(buf);
-
-  bufp = buf;
-
-  if (strncmp(bufp, vroot_base, vroot_baselen) == 0) {
-    bufp += vroot_baselen;
-  }
-
-loop:
-  pr_signals_handle();
-
-  if (bufp[0] == '.' &&
-      bufp[1] == '.' &&
-      (bufp[2] == '\0' ||
-       bufp[2] == '/')) {
-    char *tmp = NULL;
-
-    tmp = strrchr(path, '/');
-    if (tmp != NULL) {
-      *tmp = '\0';
-
-    } else {
-      *path = '\0';
-    }
-
-    if (strncmp(path, vroot_base, vroot_baselen) == 0 ||
-         path[vroot_baselen] != '/') {
-      snprintf(path, pathlen, "%s/", vroot_base);
-    }
-
-    if (bufp[0] == '.' &&
-        bufp[1] == '.' &&
-        bufp[2] == '/') {
-      bufp += 3;
-      goto loop;
-    }
-
-  } else if (*bufp == '/') {
-    snprintf(path, pathlen, "%s/", vroot_base);
-    bufp += 1;
-    goto loop;
-
-  } else if (*bufp != '\0') {
-    size_t buflen, tmplen;
-    char *ptr = NULL;
-
-    ptr = strstr(bufp, "..");
-    if (ptr != NULL) {
-      size_t ptrlen;
-
-      /* We need to watch for path components/filenames which legitimately
-       * contain two or more periods in addition to other characters.
-       */
-
-      ptrlen = strlen(ptr);
-      if (ptrlen >= 3) {
-
-        /* If this ".." occurrence is the start of the buffer AND the next
-         * character after the ".." is a slash, then deny it.
-         */
-        if (ptr == bufp &&
-            ptr[2] == '/') {
-          errno = EPERM;
-          return -1;
-        }
-
-        /* If this ".." occurrence is NOT the start of the buffer AND the
-         * characters preceeding and following the ".." are slashes, then
-         * deny it.
-         */
-        if (ptr != bufp &&
-            ptr[-1] == '/' &&
-            ptr[2] == '/') {
-          errno = EPERM;
-          return -1;
-        }
-      }
-    }
-
-    buflen = strlen(bufp) + 1;
-    tmplen = strlen(path);
-
-    if (tmplen + buflen >= pathlen) {
-      errno = ENAMETOOLONG;
-      return -1;
-    }
-
-    path[tmplen] = '/';
-    memcpy(path + tmplen + 1, bufp, buflen);
-  }
-
-  /* Clean any unnecessary characters added by the above processing. */
-  vroot_clean_path(path);
-
-  if (!(flags & VROOT_LOOKUP_FL_NO_ALIASES)) {
-    /* Check to see if this path is an alias; if so, return the real path. */
-    if (vroot_aliastab != NULL) {
-      char *start_ptr = NULL, *end_ptr = NULL;
-      const char *src_path = NULL;
-
-      /* buf is used here for storing the "suffix", to be appended later when
-       * aliases are found.
-       */
-      bufp = buf;
-      start_ptr = path;
-
-      while (start_ptr != NULL) {
-        char *ptr = NULL;
-
-        pr_signals_handle();
-
-        pr_trace_msg(trace_channel, 15, "checking for alias for '%s'",
-          start_ptr);
-
-        src_path = pr_table_get(vroot_aliastab, start_ptr, NULL);
-        if (src_path != NULL) {
-          pr_trace_msg(trace_channel, 15, "found '%s' for alias '%s'", src_path,
-            start_ptr);
-
-          /* If the caller provided a pointer for wanting to know the full
-           * alias path (not the true path), then fill that pointer.
-           */
-          if (alias_path != NULL) {
-            if (end_ptr != NULL) {
-              *alias_path = pdircat(p, start_ptr, end_ptr + 1, NULL);
-
-            } else {
-              *alias_path = pstrdup(p, start_ptr);
-            }
-
-            pr_trace_msg(trace_channel, 19, "using alias path '%s' for '%s'",
-              *alias_path, start_ptr);
-          }
-
-          sstrncpy(path, src_path, pathlen);
-
-          if (end_ptr != NULL) {
-            /* Now tack on our suffix from the scratchpad. */
-            sstrcat(path, bufp, pathlen);
-          }
-
-          break;
-        }
-
-        ptr = strrchr(start_ptr, '/');
-
-        if (end_ptr != NULL) {
-          *end_ptr = '/';
-        }
-
-        if (ptr == NULL) {
-          break;
-        }
-
-        /* If this is the start of the path, we're done. */
-        if (ptr == start_ptr) {
-          break;
-        }
-
-        /* Store the suffix in the buf scratchpad. */
-        sstrncpy(buf, ptr, sizeof(buf));
-        end_ptr = ptr;
-        *end_ptr = '\0';
-      }
-    }
-  }
-
-  return 0;
-}
-
-static int vroot_is_alias(const char *path) {
-  if (pr_table_get(vroot_aliastab, path, 0) != NULL) {
-    return 0;
-  }
-
-  errno = ENOENT;
-  return -1;
-}
-
-static int handle_vroot_alias(void) {
+static int handle_vrootaliases(void) {
   config_rec *c;
   pool *tmp_pool = NULL;
 
   /* Handle any VRootAlias settings. */
 
   tmp_pool = make_sub_pool(session.pool);
+  pr_pool_tag(tmp_pool, "VRootAlias pool");
 
   c = find_config(main_server->conf, CONF_PARAM, "VRootAlias", FALSE);
   while (c != NULL) {
@@ -431,7 +62,7 @@ static int handle_vroot_alias(void) {
 
     pr_signals_handle();
 
-    /* XXX Note that by using vroot_lookup_path(), we assume a POST_CMD
+    /* XXX Note that by using vroot_path_lookup(), we assume a POST_CMD
      * invocation.  Looks like VRootAlias might end up being incompatible
      * with VRootServerRoot.
      */
@@ -443,7 +74,7 @@ static int handle_vroot_alias(void) {
     ptr = path_subst_uservar(tmp_pool, &ptr);
 
     sstrncpy(src_path, ptr, sizeof(src_path)-1);
-    vroot_clean_path(src_path);
+    vroot_path_clean(src_path);
 
     ptr = c->argv[1];
 
@@ -451,19 +82,10 @@ static int handle_vroot_alias(void) {
     ptr = path_subst_uservar(tmp_pool, &ptr);
 
     ptr = dir_best_path(tmp_pool, ptr);
-    vroot_lookup_path(NULL, dst_path, sizeof(dst_path)-1, ptr,
-      VROOT_LOOKUP_FL_NO_ALIASES, NULL);
+    vroot_path_lookup(NULL, dst_path, sizeof(dst_path)-1, ptr,
+      VROOT_LOOKUP_FL_NO_ALIAS, NULL);
 
-    if (vroot_alias_pool == NULL) {
-      vroot_alias_pool = make_sub_pool(session.pool);
-      pr_pool_tag(vroot_alias_pool, "VRoot Alias Pool");
-
-      vroot_aliastab = pr_table_alloc(vroot_alias_pool, 0);
-    }
-
-    if (pr_table_add(vroot_aliastab, pstrdup(vroot_alias_pool, dst_path),
-        pstrdup(vroot_alias_pool, src_path), 0) < 0) {
-
+    if (vroot_alias_add(dst_path, src_path) < 0) {
       /* Make a slightly better log message when there is an alias collision. */
       if (errno == EEXIST) {
         (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
@@ -485,921 +107,6 @@ static int handle_vroot_alias(void) {
 
   destroy_pool(tmp_pool);
   return 0;
-}
-
-/* FS callbacks
- */
-
-static int vroot_stat(pr_fs_t *fs, const char *stat_path, struct stat *st) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
-  pool *tmp_pool = NULL;
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    return stat(stat_path, st);
-  }
-
-  tmp_pool = make_sub_pool(session.pool);
-  path = vroot_realpath(tmp_pool, stat_path, 0);
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
-    destroy_pool(tmp_pool);
-    return -1;
-  }
-
-  res = stat(vpath, st);
-  destroy_pool(tmp_pool);
-  return res;
-}
-
-static int vroot_lstat(pr_fs_t *fs, const char *orig_path, struct stat *st) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
-  size_t pathlen = 0;
-  pool *tmp_pool = NULL;
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    return lstat(orig_path, st);
-  }
-
-  tmp_pool = make_sub_pool(session.pool);
-
-  path = pstrdup(tmp_pool, orig_path);
-  vroot_clean_path(path);
-
-  /* If the given path ends in a slash, remove it.  The handling of
-   * VRootAliases is sensitive to such things.
-   */
-  pathlen = strlen(path);
-  if (pathlen > 1 &&
-      path[pathlen-1] == '/') {
-    path[pathlen-1] = '\0';
-    pathlen--;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
-    destroy_pool(tmp_pool);
-    return -1;
-  }
-
-  if ((vroot_opts & VROOT_OPT_ALLOW_SYMLINKS) ||
-      vroot_is_alias(path) == 0) {
-    res = lstat(vpath, st);
-    if (res < 0) {
-      destroy_pool(tmp_pool);
-      return -1;
-    }
-
-    res = stat(vpath, st);
-    destroy_pool(tmp_pool);
-    return res;
-  }
-
-  res = lstat(vpath, st);
-  destroy_pool(tmp_pool);
-  return res;
-}
-
-static int vroot_rename(pr_fs_t *fs, const char *rnfm, const char *rnto) {
-  int res;
-  char vpath1[PR_TUNABLE_PATH_MAX + 1], vpath2[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = rename(rnfm, rnto);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath1, sizeof(vpath1)-1, rnfm, 0, NULL) < 0) {
-    return -1;
-  }
-
-  if (vroot_lookup_path(NULL, vpath2, sizeof(vpath2)-1, rnto, 0, NULL) < 0) {
-    return -1;
-  }
-
-  res = rename(vpath1, vpath2);
-  return res;
-}
-
-static int vroot_unlink(pr_fs_t *fs, const char *path) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (vroot_base[0] == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = unlink(path);
-    return res;
-  }
-
-  /* Do not allow deleting of aliased files/directories; the aliases may only
-   * exist for this user/group.
-   */
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path,
-      VROOT_LOOKUP_FL_NO_ALIASES, NULL) < 0) {
-    return -1;
-  }
-
-  if (vroot_is_alias(vpath) == 0) {
-    (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-      "denying delete of '%s' because it is a VRootAlias", vpath);
-    errno = EACCES;
-    return -1;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
-    return -1;
-  }
-
-  res = unlink(vpath);
-  return res;
-}
-
-static int vroot_open(pr_fh_t *fh, const char *path, int flags) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = open(path, flags, PR_OPEN_MODE);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
-    return -1;
-
-  res = open(vpath, flags, PR_OPEN_MODE);
-  return res;
-}
-
-#if PROFTPD_VERSION_NUMBER < 0x0001030603
-static int vroot_creat(pr_fh_t *fh, const char *path, mode_t mode) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = creat(path, mode);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
-    return -1;
-
-  res = creat(vpath, mode);
-  return res;
-}
-#endif /* ProFTPD 1.3.6rc2 or earlier */
-
-static int vroot_link(pr_fs_t *fs, const char *path1, const char *path2) {
-  int res;
-  char vpath1[PR_TUNABLE_PATH_MAX + 1], vpath2[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = link(path1, path2);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath1, sizeof(vpath1)-1, path1, 0, NULL) < 0) {
-    return -1;
-  }
-
-  if (vroot_lookup_path(NULL, vpath2, sizeof(vpath2)-1, path2, 0, NULL) < 0) {
-    return -1;
-  }
-
-  res = link(vpath1, vpath2);
-  return res;
-}
-
-static int vroot_symlink(pr_fs_t *fs, const char *path1, const char *path2) {
-  int res;
-  char vpath1[PR_TUNABLE_PATH_MAX + 1], vpath2[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = symlink(path1, path2);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath1, sizeof(vpath1)-1, path1, 0, NULL) < 0) {
-    return -1;
-  }
-
-  if (vroot_lookup_path(NULL, vpath2, sizeof(vpath2)-1, path2, 0, NULL) < 0) {
-    return -1;
-  }
-
-  res = symlink(vpath1, vpath2);
-  return res;
-}
-
-static int vroot_readlink(pr_fs_t *fs, const char *readlink_path, char *buf,
-    size_t max) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL, *alias_path = NULL;
-  pool *tmp_pool = NULL;
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    return readlink(readlink_path, buf, max);
-  }
-
-  /* In order to find any VRootAlias paths, we need to use the full path.
-   * However, if we do NOT find any VRootAlias, then we do NOT want to use
-   * the full path.
-   */
-
-  tmp_pool = make_sub_pool(session.pool);
-  path = vroot_realpath(tmp_pool, readlink_path, VROOT_REALPATH_FL_ABS_PATH);
-
-  if (vroot_lookup_path(tmp_pool, vpath, sizeof(vpath)-1, path, 0,
-      &alias_path) < 0) {
-    destroy_pool(tmp_pool);
-    return -1;
-  }
-
-  if (alias_path == NULL) {
-    if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, readlink_path, 0,
-        NULL) < 0) {
-      destroy_pool(tmp_pool);
-      return -1;
-    }
-  }
-
-  res = readlink(vpath, buf, max);
-  destroy_pool(tmp_pool);
-  return res;
-}
-
-static int vroot_truncate(pr_fs_t *fs, const char *path, off_t length) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = truncate(path, length);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
-    return -1;
-
-  res = truncate(vpath, length);
-  return res;
-}
-
-static int vroot_chmod(pr_fs_t *fs, const char *path, mode_t mode) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = chmod(path, mode);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
-    return -1;
-
-  res = chmod(vpath, mode);
-  return res;
-}
-
-static int vroot_chown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = chown(path, uid, gid);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
-    return -1;
-
-  res = chown(vpath, uid, gid);
-  return res;
-}
-
-#if PROFTPD_VERSION_NUMBER >= 0x0001030407
-static int vroot_lchown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = lchown(path, uid, gid);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
-    return -1;
-
-  res = lchown(vpath, uid, gid);
-  return res;
-}
-#endif /* ProFTPD 1.3.4c or later */
-
-static int vroot_chroot(pr_fs_t *fs, const char *path) {
-  char *chroot_path = "/", *tmp = NULL;
-  config_rec *c;
-
-  if (!path ||
-      *path == '\0') {
-    errno = EINVAL;
-    return -1;
-  }
-
-  memset(vroot_base, '\0', sizeof(vroot_base));
-
-  if (path[0] == '/' &&
-      path[1] == '\0') {
-    /* chrooting to '/', nothing needs to be done. */
-    return 0;
-  }
-
-  c = find_config(main_server->conf, CONF_PARAM, "VRootServerRoot", FALSE);
-  if (c) {
-    int res;
-    char *server_root, *ptr = NULL;
-
-    server_root = c->argv[0];
-
-    /* If the last character in the configured path is a slash, remove
-     * it temporarily.
-     */
-    if (server_root[strlen(server_root)-1] == '/') {
-      ptr = &(server_root[strlen(server_root)-1]);
-      *ptr = '\0';
-    }
-
-    /* Now, make sure that the given path is below the configured
-     * VRootServerRoot.  If so, then we perform a real chroot to the
-     * VRootServerRoot directory, then use vroots from there.
-     */ 
-
-    res = strncmp(path, server_root, strlen(server_root));
-
-    if (ptr != NULL) {
-      *ptr = '/';
-    }
-
-    if (res == 0) {
-      (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-        "chroot path '%s' within VRootServerRoot '%s', "
-        "chrooting to VRootServerRoot", path, server_root);
-
-      if (chroot(server_root) < 0) {
-        (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-          "error chrooting to VRootServerRoot '%s': %s", server_root,
-          strerror(errno));
-        return -1;
-      }
-
-      pr_fs_clean_path(path + strlen(server_root), vroot_base,
-        sizeof(vroot_base));
-      chroot_path = server_root;
-
-    } else {
-      (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-        "chroot path '%s' is not within VRootServerRoot '%s', "
-        "not chrooting to VRootServerRoot", path, server_root);
-      pr_fs_clean_path(path, vroot_base, sizeof(vroot_base));
-    }
-
-  } else {
-    pr_fs_clean_path(path, vroot_base, sizeof(vroot_base));
-  }
-
-  tmp = vroot_base;
-
-  /* Advance to the end of the path. */
-  while (*tmp != '\0') {
-    tmp++;
-  }
-
-  for (;;) {
-    tmp--;
-
-    if (tmp == vroot_base ||
-        *tmp != '/') {
-      break;
-    }
-
-    *tmp = '\0';
-  }
-
-  vroot_baselen = strlen(vroot_base);
-  if (vroot_baselen >= PR_TUNABLE_PATH_MAX) {
-    errno = ENAMETOOLONG;
-    return -1;
-  }
-
-  session.chroot_path = pstrdup(session.pool, chroot_path);
-  return 0;
-}
-
-static int vroot_chdir(pr_fs_t *fs, const char *path) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *vpathp = NULL, *alias_path = NULL;
-  pool *tmp_pool = NULL;
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = chdir(path);
-    return res;
-  }
-
-  tmp_pool = make_sub_pool(session.pool);
-  if (vroot_lookup_path(tmp_pool, vpath, sizeof(vpath)-1, path, 0,
-      &alias_path) < 0) {
-    destroy_pool(tmp_pool);
-    return -1;
-  }
-
-  res = chdir(vpath);
-  if (res < 0) {
-    destroy_pool(tmp_pool);
-    return -1;
-  }
-
-  if (alias_path != NULL) {
-    vpathp = alias_path;
-
-  } else {
-    vpathp = vpath;
-  }
-
-  if (strncmp(vpathp, vroot_base, vroot_baselen) == 0) {
-    pr_trace_msg(trace_channel, 19,
-      "adjusting vpath '%s' to account for vroot base '%s' (%lu)", vpathp,
-      vroot_base, (unsigned long) vroot_baselen);
-    vpathp += vroot_baselen;
-  }
-
-  pr_trace_msg(trace_channel, 19,
-    "setting current working directory to '%s'", vpathp);
-
-  /* pr_fs_setcwd() makes a copy of the argument path, so we can safely
-   * destroy our temporary pool.
-   */
-  pr_fs_setcwd(vpathp);
-
-  destroy_pool(tmp_pool);
-  return 0;
-}
-
-static int vroot_utimes(pr_fs_t *fs, const char *utimes_path,
-    struct timeval *tvs) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
-  pool *tmp_pool = NULL;
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = utimes(utimes_path, tvs);
-    return res;
-  }
-
-  tmp_pool = make_sub_pool(session.pool);
-  path = vroot_realpath(tmp_pool, utimes_path, VROOT_REALPATH_FL_ABS_PATH);
-  
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
-    destroy_pool(tmp_pool);
-    return -1;
-  }
-
-  res = utimes(vpath, tvs);
-  destroy_pool(tmp_pool);
-  return res;
-}
-
-static struct dirent *vroot_dent = NULL;
-static size_t vroot_dentsz = 0;
-
-/* On most systems, dirent.d_name is an array into which we can copy the
- * name we want.
- *
- * However, on other systems (e.g. Solaris 2), dirent.d_name is an array size
- * of 1.  This approach makes use of the fact that the d_name member is the
- * last member of the struct, meaning that the actual size is variable.
- *
- * We need to Do The Right Thing(tm) in either case.
- */
-static size_t vroot_dent_namesz = 0;
-
-static array_header *vroot_dir_aliases = NULL;
-static int vroot_dir_idx = -1;
-
-static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
-    const void *value_data, size_t value_datasz, void *user_data) {
-  const char *alias_path = NULL, *dir_path = NULL, *real_path = NULL;
-  char *ptr = NULL;
-  size_t dir_pathlen;
-
-  alias_path = key_data;
-  real_path = value_data;
-  dir_path = user_data;
-
-  ptr = strrchr(alias_path, '/');
-  if (ptr == NULL) {
-    /* This is not likely to happen, but if it does, simply move to the
-     * next item in the table.
-     */
-    return 0;
-  }
-
-  /* If the dir path and the real path are the same, skip this alias.
-   * Otherwise we end up with an extraneous entry in the directory listing.
-   */
-  if (strcmp(real_path, dir_path) == 0) {
-    return 0;
-  }
-
-  dir_pathlen = strlen(dir_path);
-
-  if (strncmp(dir_path, alias_path, dir_pathlen) == 0) {
-    pr_trace_msg(trace_channel, 17,
-      "adding VRootAlias '%s' to list of aliases contained in '%s'",
-      alias_path, dir_path);
-    *((char **) push_array(vroot_dir_aliases)) = pstrdup(vroot_dir_pool,
-      ptr + 1);
-  }
-
-  return 0;
-}
-
-static int vroot_dirtab_keycmp_cb(const void *key1, size_t keysz1,
-    const void *key2, size_t keysz2) {
-  unsigned long k1, k2;
-
-  memcpy(&k1, key1, sizeof(k1));
-  memcpy(&k2, key2, sizeof(k2));
-
-  return (k1 == k2 ? 0 : 1);
-}
-
-static unsigned int vroot_dirtab_hash_cb(const void *key, size_t keysz) {
-  unsigned long h;
-
-  memcpy(&h, key, sizeof(h));
-  return h;
-}
-
-static void *vroot_opendir(pr_fs_t *fs, const char *orig_path) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
-  void *dirh = NULL;
-  struct stat st;
-  size_t pathlen = 0;
-  pool *tmp_pool = NULL;
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    dirh = opendir(orig_path);
-    return dirh;
-  }
-
-  tmp_pool = make_sub_pool(session.pool);
-
-  /* If the given path ends in a slash, remove it.  The handling of
-   * VRootAliases is sensitive to trailing slashes.
-   */
-  path = pstrdup(tmp_pool, orig_path);
-  vroot_clean_path(path);
-
-  /* If the given path ends in a slash, remove it.  The handling of
-   * VRootAliases is sensitive to such things.
-   */
-  pathlen = strlen(path);
-  if (pathlen > 1 &&
-      path[pathlen-1] == '/') {
-    path[pathlen-1] = '\0';
-    pathlen--;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
-    destroy_pool(tmp_pool);
-    return NULL;
-  }
-
-  /* Check if the looked-up vpath is a symlink; we may need to resolve any
-   * links ourselves, rather than assuming that the system opendir(3) can
-   * handle it.
-   */
-
-  res = vroot_lstat(fs, vpath, &st);
-  while (res == 0 &&
-         S_ISLNK(st.st_mode)) {
-    char data[PR_TUNABLE_PATH_MAX + 1];
-
-    pr_signals_handle();
-
-    memset(data, '\0', sizeof(data));
-    res = vroot_readlink(fs, vpath, data, sizeof(data)-1);
-    if (res < 0)
-      break;
-
-    data[res] = '\0';
-
-    sstrncpy(vpath, data, sizeof(vpath));
-    res = vroot_lstat(fs, vpath, &st);
-  }
-
-  dirh = opendir(vpath);
-  if (dirh == NULL) {
-    (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-      "error opening virtualized directory '%s' (from '%s'): %s", vpath, path,
-      strerror(errno));
-    destroy_pool(tmp_pool);
-    return NULL;
-  }
-
-  if (vroot_aliastab != NULL) {
-    unsigned long *cache_dirh = NULL;
-
-    if (vroot_dirtab == NULL) {
-      vroot_dir_pool = make_sub_pool(session.pool);
-      pr_pool_tag(vroot_dir_pool, "VRoot Directory Pool");
-
-      vroot_dirtab = pr_table_alloc(vroot_dir_pool, 0);
-
-      /* Since this table will use DIR pointers as keys, we want to override
-       * the default hashing and key comparison functions used.
-       */
-    
-      pr_table_ctl(vroot_dirtab, PR_TABLE_CTL_SET_KEY_HASH,
-        vroot_dirtab_hash_cb);
-      pr_table_ctl(vroot_dirtab, PR_TABLE_CTL_SET_KEY_CMP,
-        vroot_dirtab_keycmp_cb);
-    }
-
-    cache_dirh = palloc(vroot_dir_pool, sizeof(unsigned long));
-    *cache_dirh = (unsigned long) dirh;
-
-    if (pr_table_kadd(vroot_dirtab, cache_dirh, sizeof(unsigned long),
-        pstrdup(vroot_dir_pool, vpath), strlen(vpath) + 1) < 0) {
-      (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-        "error stashing path '%s' (key %p) in directory table: %s", vpath,
-        dirh, strerror(errno));
-
-    } else {
-      vroot_dir_aliases = make_array(vroot_dir_pool, 0, sizeof(char *));
-
-      res = pr_table_do(vroot_aliastab, vroot_alias_dirscan, vpath,
-        PR_TABLE_DO_FL_ALL);
-      if (res < 0) {
-        (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-          "error doing dirscan on aliases table: %s", strerror(errno));
-
-      } else {
-        register unsigned int i;
-
-        (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-          "found %d %s in directory '%s'", vroot_dir_aliases->nelts,
-          vroot_dir_aliases->nelts != 1 ? "VRootAliases" : "VRootAlias",
-          vpath);
-        vroot_dir_idx = 0;
-
-        for (i = 0; i < vroot_dir_aliases->nelts; i++) {
-          char **elts = vroot_dir_aliases->elts;
-
-          (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-            "'%s' aliases: [%u] %s", vpath, i, elts[i]);
-        }
-      }
-    }
-  }
-
-  destroy_pool(tmp_pool);
-  return dirh;
-}
-
-static struct dirent *vroot_readdir(pr_fs_t *fs, void *dirh) {
-  struct dirent *dent = NULL;
-
-next_dent:
-  dent = readdir((DIR *) dirh);
-
-  if (vroot_dir_aliases != NULL) {
-    char **elts;
-
-    elts = vroot_dir_aliases->elts;
-
-    if (dent != NULL) {
-      register unsigned int i;
-
-      /* If this dent has the same name as an alias, the alias wins.
-       * This is similar to a mounted filesystem, which hides any directories
-       * underneath the mount point for the duration of the mount.
-       */
-
-      /* Yes, this is a linear scan; it assumes that the number of configured
-       * aliases for a site will be relatively few.  Should this assumption
-       * not be borne out by reality, then we should switch to using a
-       * table, not an array_header, for storing the aliased paths.
-       */
-
-      for (i = 0; i < vroot_dir_aliases->nelts; i++) {
-        if (strcmp(dent->d_name, elts[i]) == 0) {
-          (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-            "skipping directory entry '%s', as it is aliased", dent->d_name);
-          goto next_dent;
-        }
-      }
-
-    } else {
-      if (vroot_dir_idx < 0 ||
-          vroot_dir_idx >= vroot_dir_aliases->nelts) {
-        return NULL;
-      }
-
-      memset(vroot_dent, 0, vroot_dentsz);
-
-      if (vroot_dent_namesz == 0) {
-        sstrncpy(vroot_dent->d_name, elts[vroot_dir_idx++],
-          sizeof(vroot_dent->d_name));
-
-      } else {
-        sstrncpy(vroot_dent->d_name, elts[vroot_dir_idx++],
-          vroot_dent_namesz);
-      }
-
-      return vroot_dent;
-    }
-  }
-
-  return dent;
-}
-
-static int vroot_closedir(pr_fs_t *fs, void *dirh) {
-  int res;
-
-  res = closedir((DIR *) dirh);
-
-  if (vroot_dirtab != NULL) {
-    unsigned long lookup_dirh;
-    int count;
-
-    lookup_dirh = (unsigned long) dirh;
-    (void) pr_table_kremove(vroot_dirtab, &lookup_dirh, sizeof(unsigned long),
-      NULL);
-
-    /* If the dirtab table is empty, destroy the table. */
-    count = pr_table_count(vroot_dirtab);
-
-    if (count == 0) {
-      pr_table_empty(vroot_dirtab);
-      destroy_pool(vroot_dir_pool);
-      vroot_dir_pool = NULL;
-      vroot_dirtab = NULL;
-      vroot_dir_aliases = NULL;
-      vroot_dir_idx = -1;
-    }
-  }
-
-  return res;
-}
-
-static int vroot_mkdir(pr_fs_t *fs, const char *path, mode_t mode) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = mkdir(path, mode);
-    return res;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
-    return -1;
-
-  res = mkdir(vpath, mode);
-  return res;
-}
-
-static int vroot_rmdir(pr_fs_t *fs, const char *path) {
-  int res;
-  char vpath[PR_TUNABLE_PATH_MAX + 1];
-
-  if (session.curr_phase == LOG_CMD ||
-      session.curr_phase == LOG_CMD_ERR ||
-      (session.sf_flags & SF_ABORT) ||
-      *vroot_base == '\0') {
-    /* NOTE: once stackable FS modules are supported, have this fall through
-     * to the next module in the stack.
-     */
-    res = rmdir(path);
-    return res;
-  }
-
-  /* Do not allow deleting of aliased files/directories; the aliases may only
-   * exist for this user/group.
-   */
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path,
-      VROOT_LOOKUP_FL_NO_ALIASES, NULL) < 0) {
-    return -1;
-  }
-
-  if (vroot_is_alias(vpath) == 0) {
-    (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
-      "denying delete of '%s' because it is a VRootAlias", vpath);
-    errno = EACCES;
-    return -1;
-  }
-
-  if (vroot_lookup_path(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0)
-    return -1;
-
-  res = rmdir(vpath);
-  return res;
 }
 
 /* Configuration handlers
@@ -1429,19 +136,20 @@ MODRET set_vrootalias(cmd_rec *cmd) {
 
 /* usage: VRootEngine on|off */
 MODRET set_vrootengine(cmd_rec *cmd) {
-  int bool = -1;
+  int engine = -1;
   config_rec *c = NULL;
 
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  bool = get_boolean(cmd, 1);
-  if (bool == -1)
+  engine = get_boolean(cmd, 1);
+  if (engine == -1) {
     CONF_ERROR(cmd, "expected Boolean parameter");
+  }
 
   c = add_config_param(cmd->argv[0], 1, NULL);
-  c->argv[0] = pcalloc(c->pool, sizeof(unsigned char));
-  *((unsigned char *) c->argv[0]) = bool;
+  c->argv[0] = pcalloc(c->pool, sizeof(int));
+  *((int *) c->argv[0]) = engine;
 
   return PR_HANDLED(cmd);
 }
@@ -1451,8 +159,9 @@ MODRET set_vrootlog(cmd_rec *cmd) {
   CHECK_ARGS(cmd, 1);
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
-  if (pr_fs_valid_path(cmd->argv[1]) < 0)
+  if (pr_fs_valid_path(cmd->argv[1]) < 0) {
     CONF_ERROR(cmd, "must be an absolute path");
+  }
 
   (void) add_config_param_str(cmd->argv[0], 1, cmd->argv[1]);
   return PR_HANDLED(cmd);
@@ -1464,14 +173,15 @@ MODRET set_vrootoptions(cmd_rec *cmd) {
   register unsigned int i;
   unsigned int opts = 0U;
 
-  if (cmd->argc-1 == 0)
+  if (cmd->argc-1 == 0) {
     CONF_ERROR(cmd, "wrong number of parameters");
+  }
 
   CHECK_CONF(cmd, CONF_ROOT|CONF_VIRTUAL|CONF_GLOBAL);
 
   c = add_config_param(cmd->argv[0], 1, NULL);
   for (i = 1; i < cmd->argc; i++) {
-    if (strcmp(cmd->argv[i], "allowSymlinks") == 0) {
+    if (strcasecmp(cmd->argv[i], "AllowSymlinks") == 0) {
       opts |= VROOT_OPT_ALLOW_SYMLINKS;
 
     } else {
@@ -1498,8 +208,9 @@ MODRET set_vrootserverroot(cmd_rec *cmd) {
 
   path = cmd->argv[1];
 
-  if (pr_fs_valid_path(path) < 0)
+  if (pr_fs_valid_path(path) < 0) {
     CONF_ERROR(cmd, "must be an absolute path");
+  }
 
   if (stat(path, &st) < 0) {
     CONF_ERROR(cmd, pstrcat(cmd->tmp_pool, "error checking '", path, "': ",
@@ -1546,8 +257,11 @@ MODRET vroot_log_retr(cmd_rec *cmd) {
     char *real_path;
 
     if (*path == '/') {
-      real_path = pdircat(cmd->pool, vroot_base, path, NULL);
-      vroot_clean_path(real_path);
+      const char *base_path;
+
+      base_path = vroot_path_get_base(cmd->tmp_pool, NULL);
+      real_path = pdircat(cmd->pool, base_path, path, NULL);
+      vroot_path_clean(real_path);
 
     } else {
       real_path = vroot_realpath(cmd->pool, path, VROOT_REALPATH_FL_ABS_PATH);
@@ -1574,8 +288,11 @@ MODRET vroot_log_stor(cmd_rec *cmd) {
     char *real_path;
 
     if (*path == '/') {
-      real_path = pdircat(cmd->pool, vroot_base, path, NULL);
-      vroot_clean_path(real_path);
+      const char *base_path;
+
+      base_path = vroot_path_get_base(cmd->tmp_pool, NULL);
+      real_path = pdircat(cmd->pool, base_path, path, NULL);
+      vroot_path_clean(real_path);
 
     } else {
       real_path = vroot_realpath(cmd->pool, path, VROOT_REALPATH_FL_ABS_PATH);
@@ -1615,11 +332,10 @@ MODRET vroot_post_mkd(cmd_rec *cmd) {
 
 MODRET vroot_pre_pass(cmd_rec *cmd) {
   pr_fs_t *fs = NULL;
-  unsigned char *use_vroot = NULL;
+  int *use_vroot = NULL;
 
   use_vroot = get_param_ptr(main_server->conf, "VRootEngine", FALSE); 
-
-  if (!use_vroot ||
+  if (use_vroot == NULL ||
       *use_vroot == FALSE) {
     vroot_engine = FALSE;
     return PR_DECLINED(cmd);
@@ -1627,7 +343,7 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
 
   /* First, make sure that we have not already registered our FS object. */
   fs = pr_unmount_fs("/", "vroot");
-  if (fs) {
+  if (fs != NULL) {
     destroy_pool(fs->fs_pool);
   }
 
@@ -1644,41 +360,41 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
    * provide callbacks for the following (as they are unnecessary):
    * close(), read(), write(), and lseek().
    */
-  fs->stat = vroot_stat;
-  fs->lstat = vroot_lstat;
-  fs->rename = vroot_rename;
-  fs->unlink = vroot_unlink;
-  fs->open = vroot_open;
+  fs->stat = vroot_fsio_stat;
+  fs->lstat = vroot_fsio_lstat;
+  fs->rename = vroot_fsio_rename;
+  fs->unlink = vroot_fsio_unlink;
+  fs->open = vroot_fsio_open;
 #if PROFTPD_VERSION_NUMBER < 0x0001030603
-  fs->creat = vroot_creat;
+  fs->creat = vroot_fsio_creat;
 #endif /* ProFTPD 1.3.6rc2 or earlier */
-  fs->link = vroot_link;
-  fs->readlink = vroot_readlink;
-  fs->symlink = vroot_symlink;
-  fs->truncate = vroot_truncate;
-  fs->chmod = vroot_chmod;
-  fs->chown = vroot_chown;
+  fs->link = vroot_fsio_link;
+  fs->readlink = vroot_fsio_readlink;
+  fs->symlink = vroot_fsio_symlink;
+  fs->truncate = vroot_fsio_truncate;
+  fs->chmod = vroot_fsio_chmod;
+  fs->chown = vroot_fsio_chown;
 #if PROFTPD_VERSION_NUMBER >= 0x0001030407
-  fs->lchown = vroot_lchown;
+  fs->lchown = vroot_fsio_lchown;
 #endif /* ProFTPD 1.3.4c or later */
-  fs->chdir = vroot_chdir;
-  fs->chroot = vroot_chroot;
-  fs->utimes = vroot_utimes;
-  fs->opendir = vroot_opendir;
-  fs->readdir = vroot_readdir;
-  fs->closedir = vroot_closedir;
-  fs->mkdir = vroot_mkdir;
-  fs->rmdir = vroot_rmdir;
+  fs->chdir = vroot_fsio_chdir;
+  fs->chroot = vroot_fsio_chroot;
+  fs->utimes = vroot_fsio_utimes;
+  fs->opendir = vroot_fsio_opendir;
+  fs->readdir = vroot_fsio_readdir;
+  fs->closedir = vroot_fsio_closedir;
+  fs->mkdir = vroot_fsio_mkdir;
+  fs->rmdir = vroot_fsio_rmdir;
 
   vroot_engine = TRUE;
   return PR_DECLINED(cmd);
 }
 
 MODRET vroot_post_pass(cmd_rec *cmd) {
-  if (vroot_engine) {
+  if (vroot_engine == TRUE) {
 
     /* If not chrooted, unregister vroot. */
-    if (!session.chroot_path) {
+    if (session.chroot_path == NULL) {
       if (pr_unregister_fs("/") < 0) {
         pr_log_debug(DEBUG2, MOD_VROOT_VERSION
           ": error unregistering vroot: %s", strerror(errno));
@@ -1694,14 +410,14 @@ MODRET vroot_post_pass(cmd_rec *cmd) {
 
       /* Otherwise, lookup and process any VRootOptions. */
       c = find_config(main_server->conf, CONF_PARAM, "VRootOptions", FALSE);
-      if (c) {
+      if (c != NULL) {
         vroot_opts = *((unsigned int *) c->argv[0]);
       }
 
       /* XXX This needs to be in the PRE_CMD PASS handler, as when
        * VRootServer is used, so that a real chroot(2) occurs.
        */
-      handle_vroot_alias();
+      handle_vrootaliases();
     }
   }
 
@@ -1709,8 +425,7 @@ MODRET vroot_post_pass(cmd_rec *cmd) {
 }
 
 MODRET vroot_post_pass_err(cmd_rec *cmd) {
-  if (vroot_engine) {
-
+  if (vroot_engine == TRUE) {
     /* If not chrooted, unregister vroot. */
     if (session.chroot_path == NULL) {
       if (pr_unregister_fs("/") < 0) {
@@ -1722,15 +437,18 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
       }
     }
 
-    if (vroot_aliastab) {
-      pr_table_empty(vroot_aliastab);
-      destroy_pool(vroot_alias_pool);
-      vroot_alias_pool = NULL;
-      vroot_aliastab = NULL;
-    }
+    vroot_alias_free();
   }
 
   return PR_DECLINED(cmd);
+}
+
+/* Event listeners
+ */
+
+static void vroot_exit_ev(const void *event_data, void *user_data) {
+  vroot_alias_free();
+  vroot_fsio_free();
 }
 
 /* Initialization routines
@@ -1738,54 +456,46 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
 
 static int vroot_sess_init(void) {
   config_rec *c;
-  struct dirent dent;
 
   c = find_config(main_server->conf, CONF_PARAM, "VRootLog", FALSE);
-  if (c) {
-    vroot_log = c->argv[0];
-  }
+  if (c != NULL) {
+    const char *path;
 
-  if (vroot_log &&
-      strcasecmp(vroot_log, "none") != 0) {
-    int res;
+    path = c->argv[0];
+    if (strcasecmp(path, "none") != 0) {
+      int res, xerrno;
 
-    PRIVS_ROOT
-    res = pr_log_openfile(vroot_log, &vroot_logfd, 0660);
-    PRIVS_RELINQUISH
+      PRIVS_ROOT
+      res = pr_log_openfile(path, &vroot_logfd, 0660);
+      xerrno = errno;
+      PRIVS_RELINQUISH
 
-    switch (res) {
-      case 0:
-        break;
+      switch (res) {
+        case 0:
+          break;
 
-      case -1:
-        pr_log_debug(DEBUG1, MOD_VROOT_VERSION
-          ": unable to open VRootLog '%s': %s", vroot_log, strerror(errno));
-        break;
+        case -1:
+          pr_log_debug(DEBUG1, MOD_VROOT_VERSION
+            ": unable to open VRootLog '%s': %s", path, strerror(xerrno));
+          break;
 
-      case PR_LOG_SYMLINK:
-        pr_log_debug(DEBUG1, MOD_VROOT_VERSION
-          ": unable to open VRootLog '%s': %s", vroot_log, "is a symlink");
-        break;
+        case PR_LOG_SYMLINK:
+          pr_log_debug(DEBUG1, MOD_VROOT_VERSION
+            ": unable to open VRootLog '%s': %s", path, "is a symlink");
+          break;
 
-      case PR_LOG_WRITABLE_DIR:
-        pr_log_debug(DEBUG1, MOD_VROOT_VERSION
-          ": unable to open VRootLog '%s': %s", vroot_log,
-          "parent directory is world-writable");
-        break;
+        case PR_LOG_WRITABLE_DIR:
+          pr_log_debug(DEBUG1, MOD_VROOT_VERSION
+            ": unable to open VRootLog '%s': %s", path,
+            "parent directory is world-writable");
+          break;
+      }
     }
   }
 
-  /* Allocate the memory for the static struct dirent that we use, including
-   * determining the necessary sizes.
-   */
-  vroot_dentsz = sizeof(dent);
-  if (sizeof(dent.d_name) == 1) {
-    /* Allocate extra space for the dent path name. */
-    vroot_dent_namesz = PR_TUNABLE_PATH_MAX;
-  }
-
-  vroot_dentsz += vroot_dent_namesz;
-  vroot_dent = palloc(session.pool, vroot_dentsz);
+  vroot_alias_init(session.pool);
+  vroot_fsio_init(session.pool);
+  pr_event_register(&vroot_module, "core.exit", vroot_exit_ev, NULL);
 
   return 0;
 }
