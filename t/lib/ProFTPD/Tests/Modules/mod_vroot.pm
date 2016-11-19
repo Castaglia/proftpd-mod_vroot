@@ -2686,8 +2686,8 @@ sub vroot_dir_mkd {
       # mod_vroot.  (I.e. for the purposes of this test, just '/foo.d').
       # Sigh.
 
-      # '/foo.d' => {
-      $sub_dir => {
+      # $sub_dir => {
+      '/foo.d' => {
         # Test the UserOwner directive in the <Directory> setting
         UserOwner => 'root',
       },
@@ -4442,7 +4442,7 @@ sub vroot_alias_file_mlst {
       $self->assert($expected == $resp_code,
         test_msg("Expected $expected, got $resp_code"));
 
-      $expected = 'modify=\d+;perm=adfr(w)?;size=\d+;type=file;unique=\S+;UNIX.group=\d+;UNIX.mode=\d+;UNIX.owner=\d+; \/bar.txt$';
+      $expected = 'modify=\d+;perm=adfr(w)?;size=\d+;type=file;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; \/bar.txt$';
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected '$expected', got '$resp_msg'"));
 
@@ -6783,7 +6783,7 @@ sub vroot_alias_dir_cwd_mlsd {
       my $res = {};
       my $lines = [split(/\n/, $buf)];
       foreach my $line (@$lines) {
-        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.mode=\d+;UNIX.owner=\d+; (.*?)$/) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; (.*?)$/) {
           $res->{$1} = 1;
         }
       }
@@ -6973,7 +6973,7 @@ sub vroot_alias_dir_mlsd_from_above {
       my $res = {};
       my $lines = [split(/\n/, $buf)];
       foreach my $line (@$lines) {
-        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.mode=\d+;UNIX.owner=\d+; (.*?)$/) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; (.*?)$/) {
           $res->{$1} = 1;
         }
       }
@@ -7175,7 +7175,7 @@ sub vroot_alias_dir_outside_root_cwd_mlsd {
       my $res = {};
       my $lines = [split(/\n/, $buf)];
       foreach my $line (@$lines) {
-        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.mode=\d+;UNIX.owner=\d+; (.*?)$/) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; (.*?)$/) {
           $res->{$1} = 1;
         }
       }
@@ -7391,7 +7391,7 @@ sub vroot_alias_dir_outside_root_cwd_mlsd_cwd_ls {
       my $res = {};
       my $lines = [split(/\n/, $buf)];
       foreach my $line (@$lines) {
-        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.mode=\d+;UNIX.owner=\d+; (.*?)$/) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; (.*?)$/) {
           $res->{$1} = 1;
         }
       }
@@ -7613,7 +7613,7 @@ sub vroot_alias_dir_mlst {
       $self->assert($expected == $resp_code,
         test_msg("Expected $expected, got $resp_code"));
 
-      $expected = 'modify=\d+;perm=flcdmpe;type=dir;unique=\S+;UNIX.group=\d+;UNIX.mode=\d+;UNIX.owner=\d+; \/bar\.d$';
+      $expected = 'modify=\d+;perm=flcdmpe;type=dir;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; \/bar\.d$';
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected '$expected', got '$resp_msg'"));
 
@@ -8626,7 +8626,7 @@ sub vroot_alias_symlink_mlst {
       $self->assert($expected == $resp_code,
         test_msg("Expected $expected, got $resp_code"));
 
-      $expected = 'modify=\d+;perm=adfr(w)?;size=\d+;type=file;unique=\S+;UNIX.group=\d+;UNIX.mode=\d+;UNIX.owner=\d+; \/bar\.lnk$';
+      $expected = 'modify=\d+;perm=adfr(w)?;size=\d+;type=file;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; \/bar\.lnk$';
       $self->assert(qr/$expected/, $resp_msg,
         test_msg("Expected '$expected', got '$resp_msg'"));
 
@@ -12584,7 +12584,7 @@ sub vroot_alias_enametoolong_bug59 {
       my $res = {};
       my $lines = [split(/\n/, $buf)];
       foreach my $line (@$lines) {
-        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.mode=\d+;UNIX.owner=\d+; (.*?)$/) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; (.*?)$/) {
           $res->{$1} = 1;
         }
       }
