@@ -38,6 +38,7 @@ xaset_t *server_list = NULL;
 
 int vroot_logfd = -1;
 pool *vroot_pool = NULL;
+unsigned int vroot_opts = 0;
 
 int login_check_limits(xaset_t *set, int recurse, int and, int *found) {
   return TRUE;

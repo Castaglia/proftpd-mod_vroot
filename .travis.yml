@@ -36,3 +36,4 @@ script:
   - make clean
   - ./configure --enable-devel=coverage --enable-tests --with-modules=mod_vroot
   - make
+  - cd contrib/mod_vroot && make TEST_VERBOSE=1 check && cd ../../
