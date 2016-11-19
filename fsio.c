@@ -32,7 +32,7 @@ static pr_table_t *vroot_dirtab = NULL;
 static const char *trace_channel = "vroot.fsio";
 
 int vroot_fsio_stat(pr_fs_t *fs, const char *stat_path, struct stat *st) {
-  int res;
+  int res, xerrno;
   char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
   pool *tmp_pool = NULL;
 
@@ -51,17 +51,23 @@ int vroot_fsio_stat(pr_fs_t *fs, const char *stat_path, struct stat *st) {
   path = vroot_realpath(tmp_pool, stat_path, 0);
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
+    xerrno = errno;
+
     destroy_pool(tmp_pool);
+    errno = xerrno;
     return -1;
   }
 
   res = stat(vpath, st);
+  xerrno = errno;
+
   destroy_pool(tmp_pool);
+  errno = xerrno;
   return res;
 }
 
 int vroot_fsio_lstat(pr_fs_t *fs, const char *lstat_path, struct stat *st) {
-  int res;
+  int res, xerrno;
   char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
   size_t pathlen = 0;
   pool *tmp_pool = NULL;
@@ -93,30 +99,41 @@ int vroot_fsio_lstat(pr_fs_t *fs, const char *lstat_path, struct stat *st) {
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
+    xerrno = errno;
+
     destroy_pool(tmp_pool);
+    errno = xerrno;
     return -1;
   }
 
   if ((vroot_opts & VROOT_OPT_ALLOW_SYMLINKS) ||
-      vroot_alias_exists(path) == 0) {
+      vroot_alias_exists(path) == TRUE) {
     res = lstat(vpath, st);
     if (res < 0) {
+      xerrno = errno;
+
       destroy_pool(tmp_pool);
+      errno = xerrno;
       return -1;
     }
 
     res = stat(vpath, st);
+    xerrno = errno;
+
     destroy_pool(tmp_pool);
+    errno = xerrno;
     return res;
   }
 
   res = lstat(vpath, st);
+  xerrno = errno;
+
   destroy_pool(tmp_pool);
+  errno = xerrno;
   return res;
 }
 
 int vroot_fsio_rename(pr_fs_t *fs, const char *from, const char *to) {
-  int res;
   char vpath1[PR_TUNABLE_PATH_MAX + 1], vpath2[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -126,8 +143,7 @@ int vroot_fsio_rename(pr_fs_t *fs, const char *from, const char *to) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = rename(from, to);
-    return res;
+    return rename(from, to);
   }
 
   if (vroot_path_lookup(NULL, vpath1, sizeof(vpath1)-1, from, 0, NULL) < 0) {
@@ -138,20 +154,17 @@ int vroot_fsio_rename(pr_fs_t *fs, const char *from, const char *to) {
     return -1;
   }
 
-  res = rename(vpath1, vpath2);
-  return res;
+  return rename(vpath1, vpath2);
 }
 
 int vroot_fsio_unlink(pr_fs_t *fs, const char *path) {
-  int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
 
   if (vroot_path_have_base() == FALSE) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = unlink(path);
-    return res;
+    return unlink(path);
   }
 
   /* Do not allow deleting of aliased files/directories; the aliases may only
@@ -162,7 +175,7 @@ int vroot_fsio_unlink(pr_fs_t *fs, const char *path) {
     return -1;
   }
 
-  if (vroot_alias_exists(vpath) == 0) {
+  if (vroot_alias_exists(vpath) == TRUE) {
     (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
       "denying delete of '%s' because it is a VRootAlias", vpath);
     errno = EACCES;
@@ -173,12 +186,10 @@ int vroot_fsio_unlink(pr_fs_t *fs, const char *path) {
     return -1;
   }
 
-  res = unlink(vpath);
-  return res;
+  return unlink(vpath);
 }
 
 int vroot_fsio_open(pr_fh_t *fh, const char *path, int flags) {
-  int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -188,16 +199,14 @@ int vroot_fsio_open(pr_fh_t *fh, const char *path, int flags) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = open(path, flags, PR_OPEN_MODE);
-    return res;
+    return open(path, flags, PR_OPEN_MODE);
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
     return -1;
   }
 
-  res = open(vpath, flags, PR_OPEN_MODE);
-  return res;
+  return open(vpath, flags, PR_OPEN_MODE);
 }
 
 int vroot_fsio_creat(pr_fh_t *fh, const char *path, mode_t mode) {
@@ -212,8 +221,7 @@ int vroot_fsio_creat(pr_fh_t *fh, const char *path, mode_t mode) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = creat(path, mode);
-    return res;
+    return creat(path, mode);
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
@@ -230,7 +238,6 @@ int vroot_fsio_creat(pr_fh_t *fh, const char *path, mode_t mode) {
 }
 
 int vroot_fsio_link(pr_fs_t *fs, const char *path1, const char *path2) {
-  int res;
   char vpath1[PR_TUNABLE_PATH_MAX + 1], vpath2[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -240,8 +247,7 @@ int vroot_fsio_link(pr_fs_t *fs, const char *path1, const char *path2) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = link(path1, path2);
-    return res;
+    return link(path1, path2);
   }
 
   if (vroot_path_lookup(NULL, vpath1, sizeof(vpath1)-1, path1, 0, NULL) < 0) {
@@ -252,12 +258,10 @@ int vroot_fsio_link(pr_fs_t *fs, const char *path1, const char *path2) {
     return -1;
   }
 
-  res = link(vpath1, vpath2);
-  return res;
+  return link(vpath1, vpath2);
 }
 
 int vroot_fsio_symlink(pr_fs_t *fs, const char *path1, const char *path2) {
-  int res;
   char vpath1[PR_TUNABLE_PATH_MAX + 1], vpath2[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -267,8 +271,7 @@ int vroot_fsio_symlink(pr_fs_t *fs, const char *path1, const char *path2) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = symlink(path1, path2);
-    return res;
+    return symlink(path1, path2);
   }
 
   if (vroot_path_lookup(NULL, vpath1, sizeof(vpath1)-1, path1, 0, NULL) < 0) {
@@ -279,13 +282,12 @@ int vroot_fsio_symlink(pr_fs_t *fs, const char *path1, const char *path2) {
     return -1;
   }
 
-  res = symlink(vpath1, vpath2);
-  return res;
+  return symlink(vpath1, vpath2);
 }
 
 int vroot_fsio_readlink(pr_fs_t *fs, const char *readlink_path, char *buf,
     size_t bufsz) {
-  int res;
+  int res, xerrno;
   char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL, *alias_path = NULL;
   pool *tmp_pool = NULL;
 
@@ -311,25 +313,33 @@ int vroot_fsio_readlink(pr_fs_t *fs, const char *readlink_path, char *buf,
 
   if (vroot_path_lookup(tmp_pool, vpath, sizeof(vpath)-1, path, 0,
       &alias_path) < 0) {
+    xerrno = errno;
+
     destroy_pool(tmp_pool);
+    errno = xerrno;
     return -1;
   }
 
   if (alias_path == NULL) {
     if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, readlink_path, 0,
         NULL) < 0) {
+      xerrno = errno;
+
       destroy_pool(tmp_pool);
+      errno = xerrno;
       return -1;
     }
   }
 
   res = readlink(vpath, buf, bufsz);
+  xerrno = errno;
+
   destroy_pool(tmp_pool);
+  errno = xerrno;
   return res;
 }
 
 int vroot_fsio_truncate(pr_fs_t *fs, const char *path, off_t len) {
-  int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -339,20 +349,17 @@ int vroot_fsio_truncate(pr_fs_t *fs, const char *path, off_t len) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = truncate(path, len);
-    return res;
+    return truncate(path, len);
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
     return -1;
   }
 
-  res = truncate(vpath, len);
-  return res;
+  return truncate(vpath, len);
 }
 
 int vroot_fsio_chmod(pr_fs_t *fs, const char *path, mode_t mode) {
-  int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -362,20 +369,17 @@ int vroot_fsio_chmod(pr_fs_t *fs, const char *path, mode_t mode) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = chmod(path, mode);
-    return res;
+    return chmod(path, mode);
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
     return -1;
   }
 
-  res = chmod(vpath, mode);
-  return res;
+  return chmod(vpath, mode);
 }
 
 int vroot_fsio_chown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
-  int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -385,16 +389,14 @@ int vroot_fsio_chown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = chown(path, uid, gid);
-    return res;
+    return chown(path, uid, gid);
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
     return -1;
   }
 
-  res = chown(vpath, uid, gid);
-  return res;
+  return chown(vpath, uid, gid);
 }
 
 int vroot_fsio_lchown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
@@ -409,8 +411,7 @@ int vroot_fsio_lchown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = lchown(path, uid, gid);
-    return res;
+    return lchown(path, uid, gid);
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
@@ -478,9 +479,13 @@ int vroot_fsio_chroot(pr_fs_t *fs, const char *path) {
         "chrooting to VRootServerRoot", path, server_root);
 
       if (chroot(server_root) < 0) {
+        int xerrno = errno;
+
         (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
           "error chrooting to VRootServerRoot '%s': %s", server_root,
-          strerror(errno));
+          strerror(xerrno));
+
+        errno = xerrno;
         return -1;
       }
 
@@ -530,7 +535,7 @@ int vroot_fsio_chroot(pr_fs_t *fs, const char *path) {
 }
 
 int vroot_fsio_chdir(pr_fs_t *fs, const char *path) {
-  int res;
+  int res, xerrno;
   const char *base_path;
   size_t base_pathlen = 0;
   char vpath[PR_TUNABLE_PATH_MAX + 1], *vpathp = NULL, *alias_path = NULL;
@@ -543,8 +548,7 @@ int vroot_fsio_chdir(pr_fs_t *fs, const char *path) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = chdir(path);
-    return res;
+    return chdir(path);
   }
 
   tmp_pool = make_sub_pool(session.pool);
@@ -552,13 +556,19 @@ int vroot_fsio_chdir(pr_fs_t *fs, const char *path) {
 
   if (vroot_path_lookup(tmp_pool, vpath, sizeof(vpath)-1, path, 0,
       &alias_path) < 0) {
+    xerrno = errno;
+
     destroy_pool(tmp_pool);
+    errno = xerrno;
     return -1;
   }
 
   res = chdir(vpath);
   if (res < 0) {
+    xerrno = errno;
+
     destroy_pool(tmp_pool);
+    errno = xerrno;
     return -1;
   }
 
@@ -591,7 +601,7 @@ int vroot_fsio_chdir(pr_fs_t *fs, const char *path) {
 
 int vroot_fsio_utimes(pr_fs_t *fs, const char *utimes_path,
     struct timeval *tvs) {
-  int res;
+  int res, xerrno;
   char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
   pool *tmp_pool = NULL;
 
@@ -602,8 +612,7 @@ int vroot_fsio_utimes(pr_fs_t *fs, const char *utimes_path,
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = utimes(utimes_path, tvs);
-    return res;
+    return utimes(utimes_path, tvs);
   }
 
   tmp_pool = make_sub_pool(session.pool);
@@ -612,12 +621,18 @@ int vroot_fsio_utimes(pr_fs_t *fs, const char *utimes_path,
   path = vroot_realpath(tmp_pool, utimes_path, VROOT_REALPATH_FL_ABS_PATH);
   
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
+    xerrno = errno;
+
     destroy_pool(tmp_pool);
+    errno = xerrno;
     return -1;
   }
 
   res = utimes(vpath, tvs);
+  xerrno = errno;
+
   destroy_pool(tmp_pool);
+  errno = xerrno;
   return res;
 }
 
@@ -694,7 +709,7 @@ static unsigned int vroot_dirtab_hash_cb(const void *key, size_t keysz) {
 }
 
 void *vroot_fsio_opendir(pr_fs_t *fs, const char *orig_path) {
-  int res;
+  int res, xerrno;
   char vpath[PR_TUNABLE_PATH_MAX + 1], *path = NULL;
   void *dirh = NULL;
   struct stat st;
@@ -709,8 +724,7 @@ void *vroot_fsio_opendir(pr_fs_t *fs, const char *orig_path) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    dirh = opendir(orig_path);
-    return dirh;
+    return opendir(orig_path);
   }
 
   tmp_pool = make_sub_pool(session.pool);
@@ -733,7 +747,10 @@ void *vroot_fsio_opendir(pr_fs_t *fs, const char *orig_path) {
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
+    xerrno = errno;
+
     destroy_pool(tmp_pool);
+    errno = xerrno;
     return NULL;
   }
 
@@ -763,7 +780,7 @@ void *vroot_fsio_opendir(pr_fs_t *fs, const char *orig_path) {
 
   dirh = opendir(vpath);
   if (dirh == NULL) {
-    int xerrno = errno;
+    xerrno = errno;
 
     (void) pr_log_writefile(vroot_logfd, MOD_VROOT_VERSION,
       "error opening virtualized directory '%s' (from '%s'): %s", vpath, path,
@@ -920,7 +937,6 @@ int vroot_fsio_closedir(pr_fs_t *fs, void *dirh) {
 }
 
 int vroot_fsio_mkdir(pr_fs_t *fs, const char *path, mode_t mode) {
-  int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -930,20 +946,17 @@ int vroot_fsio_mkdir(pr_fs_t *fs, const char *path, mode_t mode) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = mkdir(path, mode);
-    return res;
+    return mkdir(path, mode);
   }
 
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
     return -1;
   }
 
-  res = mkdir(vpath, mode);
-  return res;
+  return mkdir(vpath, mode);
 }
 
 int vroot_fsio_rmdir(pr_fs_t *fs, const char *path) {
-  int res;
   char vpath[PR_TUNABLE_PATH_MAX + 1];
 
   if (session.curr_phase == LOG_CMD ||
@@ -953,8 +966,7 @@ int vroot_fsio_rmdir(pr_fs_t *fs, const char *path) {
     /* NOTE: once stackable FS modules are supported, have this fall through
      * to the next module in the stack.
      */
-    res = rmdir(path);
-    return res;
+    return rmdir(path);
   }
 
   /* Do not allow deleting of aliased files/directories; the aliases may only
@@ -976,8 +988,7 @@ int vroot_fsio_rmdir(pr_fs_t *fs, const char *path) {
     return -1;
   }
 
-  res = rmdir(vpath);
-  return res;
+  return rmdir(vpath);
 }
 
 int vroot_fsio_init(pool *p) {
