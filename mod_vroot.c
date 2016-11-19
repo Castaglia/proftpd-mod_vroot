@@ -534,14 +534,14 @@ static cmdtable vroot_cmdtab[] = {
    * LOG_CMD/LOG_CMD_ERR handlers would be run AFTER mod_log's handler,
    * even though we appear BEFORE mod_log in the module load order.
    *
-   * Thus to do the transformation, we actually use POST_CMD/POST_CMD_ERR
-   * phase handlers here.
+   * Thus to do the transformation, we actually use CMD/POST_CMD_ERR phase
+   * handlers here.
    */
-  { POST_CMD,		C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
+  { CMD,		C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
   { POST_CMD_ERR,	C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
-  { POST_CMD,		C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE },
+  { CMD,		C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE },
   { POST_CMD_ERR,	C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE },
-  { POST_CMD,		C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE },
+  { CMD,		C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE },
   { POST_CMD_ERR,	C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE },
 
   { 0, NULL }
