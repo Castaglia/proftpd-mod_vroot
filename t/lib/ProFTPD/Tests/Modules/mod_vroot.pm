@@ -459,11 +459,11 @@ sub vroot_engine {
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       my $conn = $client->list_raw();
       unless ($conn) {
@@ -517,21 +517,21 @@ sub vroot_engine {
 
       $expected = 250;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = 'CWD command successful';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       ($resp_code, $resp_msg) = $client->pwd();
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $conn = $client->list_raw();
       unless ($conn) {
@@ -582,21 +582,21 @@ sub vroot_engine {
 
       $expected = 250;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = 'CDUP command successful';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       ($resp_code, $resp_msg) = $client->pwd();
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $conn = $client->list_raw();
       unless ($conn) {
@@ -770,16 +770,15 @@ EOC
       $client->login($user, $passwd);
 
       my ($resp_code, $resp_msg) = $client->pwd();
-
       my $expected;
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       my $conn = $client->list_raw();
       unless ($conn) {
@@ -833,21 +832,21 @@ EOC
 
       $expected = 250;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = 'CWD command successful';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       ($resp_code, $resp_msg) = $client->pwd();
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $conn = $client->list_raw();
       unless ($conn) {
@@ -898,21 +897,21 @@ EOC
 
       $expected = 250;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = 'CDUP command successful';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       ($resp_code, $resp_msg) = $client->pwd();
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $conn = $client->list_raw();
       unless ($conn) {
@@ -1242,7 +1241,7 @@ sub vroot_symlink {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'fsio:10 vroot:20',
+    Trace => 'fsio:10 vroot.fsio:20 vroot.path:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
@@ -1279,7 +1278,7 @@ sub vroot_symlink {
     eval {
       sleep(1);
 
-      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port, 0, 1);
       $client->login($user, $passwd);
 
       my $conn = $client->list_raw();
@@ -1291,6 +1290,10 @@ sub vroot_symlink {
       my $buf;
       $conn->read($buf, 8192, 5);
       eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# Response:\n$buf\n";
+      }
 
       # We have to be careful of the fact that readdir returns directory
       # entries in an unordered fashion.
@@ -1314,16 +1317,15 @@ sub vroot_symlink {
 
       my $resp_code = $client->response_code();
       my $resp_msg = $client->response_msg();
+      $client->quit();
 
       my $expected = 550;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "foo.txt: No such file or directory";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
-
-      $client->quit();
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
     };
 
     if ($@) {
@@ -1500,14 +1502,14 @@ sub vroot_symlink_eloop {
 
       my $expected = 550;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       # We expect this because the "../test.txt" -> "test.txt" symlink
       # causes mod_vroot to handle "../test.txt" as "test.txt", which is
       # a symlink -- hence the loop.
       $expected = "test.txt: Too many levels of symbolic links";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
     };
@@ -1622,7 +1624,7 @@ sub vroot_opt_allow_symlinks_file {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
 
         DefaultRoot => $home_dir,
       },
@@ -1825,7 +1827,7 @@ sub vroot_opt_allow_symlinks_dir_retr {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
 
         DefaultRoot => $home_dir,
       },
@@ -2028,7 +2030,7 @@ sub vroot_opt_allow_symlinks_dir_stor_no_overwrite {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
 
         DefaultRoot => $home_dir,
       },
@@ -2112,11 +2114,11 @@ sub vroot_opt_allow_symlinks_dir_stor_no_overwrite {
 
       $expected = 550;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "public/test.txt: Overwrite permission denied";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
     };
@@ -2235,7 +2237,7 @@ sub vroot_opt_allow_symlinks_dir_stor {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
 
         DefaultRoot => $home_dir,
       },
@@ -2439,7 +2441,7 @@ sub vroot_opt_allow_symlinks_dir_cwd {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
 
         DefaultRoot => $home_dir,
       },
@@ -2517,11 +2519,11 @@ sub vroot_opt_allow_symlinks_dir_cwd {
 
       $expected = 250;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "CWD command successful";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $conn = $client->list_raw();
       unless ($conn) {
@@ -2569,32 +2571,32 @@ sub vroot_opt_allow_symlinks_dir_cwd {
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/public" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       # Go up to the parent directory
       ($resp_code, $resp_msg) = $client->cdup();
 
       $expected = 250;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "CDUP command successful";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       ($resp_code, $resp_msg) = $client->pwd();
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->quit();
     };
@@ -2909,11 +2911,11 @@ sub vroot_server_root {
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "\"/\" is the current directory";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       my $conn = $client->list_raw();
       unless ($conn) {
@@ -2944,21 +2946,21 @@ sub vroot_server_root {
 
       $expected = 250;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = 'CWD command successful';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       ($resp_code, $resp_msg) = $client->pwd();
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "\"/\" is the current directory";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $conn = $client->list_raw();
       unless ($conn) {
@@ -2987,21 +2989,21 @@ sub vroot_server_root {
 
       $expected = 250;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = 'CDUP command successful';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       ($resp_code, $resp_msg) = $client->pwd();
 
       $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = '"/" is the current directory';
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $conn = $client->list_raw();
       unless ($conn) {
@@ -7729,7 +7731,7 @@ sub vroot_alias_symlink_list {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
         DefaultRoot => '~',
 
         VRootAlias => "$src_symlink $dst_file",
@@ -7937,7 +7939,7 @@ sub vroot_alias_symlink_retr {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
         DefaultRoot => '~',
 
         VRootAlias => "$src_symlink $dst_file",
@@ -8100,7 +8102,7 @@ sub vroot_alias_symlink_stor_no_overwrite {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
         DefaultRoot => '~',
 
         VRootAlias => "$src_symlink $dst_file",
@@ -8265,7 +8267,7 @@ sub vroot_alias_symlink_stor {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
         DefaultRoot => '~',
 
         VRootAlias => "$src_symlink $dst_file",
@@ -8424,7 +8426,7 @@ sub vroot_alias_symlink_mlsd {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
         DefaultRoot => '~',
 
         VRootAlias => "$src_symlink $dst_file",
@@ -8586,7 +8588,7 @@ sub vroot_alias_symlink_mlst {
       'mod_vroot.c' => {
         VRootEngine => 'on',
         VRootLog => $log_file,
-        VRootOptions => 'allowSymlinks',
+        VRootOptions => 'AllowSymlinks',
         DefaultRoot => '~',
 
         VRootAlias => "$src_symlink $dst_file",

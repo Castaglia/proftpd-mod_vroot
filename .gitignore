@@ -1,2 +1,13 @@
+configure
+Makefile
+config.status
+autom4te.cache
+mod_vroot.h
+.libs
+.*.swp
+*.la
+*.lo
 *.log
-*.swp
+*Tests*.log
+*.o
+*~
