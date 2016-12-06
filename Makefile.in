@@ -39,7 +39,7 @@ static: $(MODULE_OBJS)
 	$(AR) rc $(MODULE_NAME).a $(MODULE_OBJS)
 	$(RANLIB) $(MODULE_NAME).a
 
-install: install-misc
+install:
 	if [ -f $(MODULE_NAME).la ] ; then \
 		$(LIBTOOL) --mode=install --tag=CC $(INSTALL_BIN) $(MODULE_NAME).la $(DESTDIR)$(LIBEXECDIR) ; \
 	fi
