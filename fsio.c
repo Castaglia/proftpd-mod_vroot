@@ -1,6 +1,6 @@
 /*
  * ProFTPD: mod_vroot FSIO API
- * Copyright (c) 2002-2016 TJ Saunders
+ * Copyright (c) 2002-2017 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -527,6 +527,13 @@ int vroot_fsio_chroot(pr_fs_t *fs, const char *path) {
   if (baselen >= PR_TUNABLE_PATH_MAX) {
     errno = ENAMETOOLONG;
     return -1;
+  }
+
+  /* Store the base path in the session notes, for use by e.g. other modules. */
+  if (pr_table_add_dup(session.notes, "mod_vroot.chroot-path", base, 0) < 0) {
+    pr_trace_msg(trace_channel, 3,
+      "error stashing 'mod_vroot.chroot-path' in session.notes: %s",
+      strerror(errno));
   }
 
   vroot_path_set_base(base, baselen);
