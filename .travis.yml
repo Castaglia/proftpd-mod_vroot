@@ -22,7 +22,7 @@ before_script:
 script:
   # - find . -type f -name "*.c" -print | grep -v t\/ | xargs cppcheck 2>&1
   # - find . -type f -name "*.c" -print | grep -v t\/ | xargs rats --language=c
-  - git clone https://github.com/proftpd/proftpd.git
+  - git clone --depth 10 https://github.com/proftpd/proftpd.git
   - mkdir -p proftpd/contrib/mod_vroot/
   - cp *.[ch] proftpd/contrib/mod_vroot/
   - cp mod_vroot.* proftpd/contrib/mod_vroot/
@@ -31,9 +31,9 @@ script:
   - cp install-sh proftpd/contrib/mod_vroot/
   - cp -R t/ proftpd/contrib/mod_vroot/t/
   - cd proftpd
-  - ./configure --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_vroot
+  - ./configure LIBS='-lm -lrt -pthread' --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_vroot
   - make
   - make clean
-  - ./configure --enable-devel=coverage --enable-tests --with-modules=mod_vroot
+  - ./configure LIBS='-lm -lrt -pthread' --enable-devel=coverage --enable-tests --with-modules=mod_vroot
   - make
   - cd contrib/mod_vroot && make TEST_VERBOSE=1 check && cd ../../
