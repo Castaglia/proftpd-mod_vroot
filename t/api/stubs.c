@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_vroot API testsuite
- * Copyright (c) 2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2017 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -156,6 +156,10 @@ void pr_session_disconnect(module *m, int reason_code, const char *details) {
 }
 
 void pr_session_end(int flags) {
+}
+
+const char *pr_session_get_protocol(int flags) {
+  return "ftp";
 }
 
 int pr_session_set_protocol(const char *proto) {
