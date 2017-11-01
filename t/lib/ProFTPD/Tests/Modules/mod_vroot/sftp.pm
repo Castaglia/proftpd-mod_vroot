@@ -89,6 +89,26 @@ my $TESTS = {
     test_class => [qw(forking mod_sftp scp)],
   },
 
+  vroot_sftp_log_xferlog_retr => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_sftp sftp)],
+  },
+
+  vroot_sftp_log_xferlog_stor => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_sftp sftp)],
+  },
+
+  vroot_scp_log_xferlog_retr => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_sftp scp)],
+  },
+
+  vroot_scp_log_xferlog_stor => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_sftp scp)],
+  },
+
 };
 
 sub new {
@@ -254,11 +274,10 @@ sub vroot_alias_file_sftp_read {
       my $buf;
       my $size = 0;
 
-      my $res = $fh->read($buf, 8192, 30);
+      my $res = $fh->read($buf, 8192);
       while ($res) {
         $size += $res;
-
-        $res = $fh->read($buf, 8192, 30);
+        $res = $fh->read($buf, 8192);
       }
 
       # To issue the FXP_CLOSE, we have to explicit destroy the filehandle
@@ -2598,6 +2617,706 @@ sub vroot_alias_file_scp_upload {
   }
 
   unlink($log_file);
+}
+
+sub vroot_sftp_log_xferlog_retr {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+  my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+  if (open(my $fh, "> $test_file")) {
+    print $fh "Hello, World!\n";
+    unless (close($fh)) {
+      die("Can't write $test_file: $!");
+    }
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 sftp:20 scp:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+
+    TransferLog => $xfer_log,
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_sftp.c' => [
+        "SFTPEngine on",
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        "SFTPHostKey $dsa_host_key",
+      ],
+
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $setup->{log_file},
+        DefaultRoot => '~',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+  require Net::SSH2;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $ssh2 = Net::SSH2->new();
+
+      sleep(1);
+
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $sftp = $ssh2->sftp();
+      unless ($sftp) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't use SFTP on SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $fh = $sftp->open('test.txt', O_RDONLY);
+      unless ($fh) {
+        my ($err_code, $err_name) = $sftp->error();
+        die("Can't open test.txt: [$err_name] ($err_code)");
+      }
+
+      my $buf;
+      my $size = 0;
+
+      my $res = $fh->read($buf, 8192);
+      while ($res) {
+        $size += $res;
+        $res = $fh->read($buf, 8192);
+      }
+
+      # To issue the FXP_CLOSE, we have to explicit destroy the filehandle
+      $fh = undef;
+
+      $ssh2->disconnect();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $xfer_log")) {
+      my $line = <$fh>;
+      chomp($line);
+      close($fh);
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "$line\n";
+      }
+
+      my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+o\s+r\s+(\S+)\s+sftp\s+0\s+\*\s+c$';
+
+      $self->assert(qr/$expected/, $line, "Expected '$expected', got '$line'");
+
+      if ($line =~ /$expected/) {
+        my $remote_host = $1;
+        my $filesz = $2;
+        my $filename = $3;
+        my $xfer_type = $4;
+        my $user_name = $5;
+
+        if ($^O eq 'darwin') {
+          # MacOSX-specific hack, due to how it handles tmp files
+          $test_file = ('/private' . $test_file);
+        }
+
+        $expected = '127.0.0.1';
+        $self->assert($expected eq $remote_host,
+          "Expected '$expected', got '$remote_host'");
+
+        $expected = -s $test_file;
+        $self->assert($expected == $filesz,
+          "Expected '$expected', got '$filesz'");
+
+        $expected = $test_file;
+        $self->assert($expected eq $filename,
+          "Expected '$expected', got '$filename'");
+
+        $expected = 'b';
+        $self->assert($expected eq $xfer_type,
+          "Expected '$expected', got '$xfer_type'");
+
+        $expected = $setup->{user};
+        $self->assert($expected eq $user_name,
+          "Expected '$expected', got '$user_name'");
+      }
+
+    } else {
+      die("Can't read $xfer_log: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub vroot_sftp_log_xferlog_stor {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+  my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+  my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 sftp:20 scp:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+
+    TransferLog => $xfer_log,
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_sftp.c' => [
+        "SFTPEngine on",
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        "SFTPHostKey $dsa_host_key",
+      ],
+
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $setup->{log_file},
+        DefaultRoot => '~',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+  require Net::SSH2;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $ssh2 = Net::SSH2->new();
+
+      sleep(1);
+
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $sftp = $ssh2->sftp();
+      unless ($sftp) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't use SFTP on SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $fh = $sftp->open('test.txt', O_WRONLY|O_CREAT, 0644);
+      unless ($fh) {
+        my ($err_code, $err_name) = $sftp->error();
+        die("Can't open test.txt: [$err_name] ($err_code)");
+      }
+
+      my $buf = "Hello, World!\n";
+      print $fh $buf;
+
+      # To issue the FXP_CLOSE, we have to explicit destroy the filehandle
+      $fh = undef;
+
+      $ssh2->disconnect();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $xfer_log")) {
+      my $line = <$fh>;
+      chomp($line);
+      close($fh);
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "$line\n";
+      }
+
+      my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+i\s+r\s+(\S+)\s+sftp\s+0\s+\*\s+c$';
+
+      $self->assert(qr/$expected/, $line, "Expected '$expected', got '$line'");
+
+      if ($line =~ /$expected/) {
+        my $remote_host = $1;
+        my $filesz = $2;
+        my $filename = $3;
+        my $xfer_type = $4;
+        my $user_name = $5;
+
+        if ($^O eq 'darwin') {
+          # MacOSX-specific hack, due to how it handles tmp files
+          $test_file = ('/private' . $test_file);
+        }
+
+        $expected = '127.0.0.1';
+        $self->assert($expected eq $remote_host,
+          "Expected '$expected', got '$remote_host'");
+
+        $expected = -s $test_file;
+        $self->assert($expected == $filesz,
+          "Expected '$expected', got '$filesz'");
+
+        $expected = $test_file;
+        $self->assert($expected eq $filename,
+          "Expected '$expected', got '$filename'");
+
+        $expected = 'b';
+        $self->assert($expected eq $xfer_type,
+          "Expected '$expected', got '$xfer_type'");
+
+        $expected = $setup->{user};
+        $self->assert($expected eq $user_name,
+          "Expected '$expected', got '$user_name'");
+      }
+
+    } else {
+      die("Can't read $xfer_log: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub vroot_scp_log_xferlog_retr {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+  my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+  if (open(my $fh, "> $test_file")) {
+    print $fh "Hello, World!\n";
+    unless (close($fh)) {
+      die("Can't write $test_file: $!");
+    }
+
+  } else {
+    die("Can't open $test_file: $!");
+  }
+
+  my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 sftp:20 scp:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+
+    TransferLog => $xfer_log,
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_sftp.c' => [
+        "SFTPEngine on",
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        "SFTPHostKey $dsa_host_key",
+      ],
+
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $setup->{log_file},
+        DefaultRoot => '~',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+  require Net::SSH2;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $ssh2 = Net::SSH2->new();
+
+      sleep(1);
+
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->scp_get('test.txt', '/dev/null')) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't download 'test.txt' from server: [$err_name] ($err_code) $err_str");
+      }
+
+      $ssh2->disconnect();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $xfer_log")) {
+      my $line = <$fh>;
+      chomp($line);
+      close($fh);
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "$line\n";
+      }
+
+      my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+o\s+r\s+(\S+)\s+scp\s+0\s+\*\s+c$';
+
+      $self->assert(qr/$expected/, $line, "Expected '$expected', got '$line'");
+
+      if ($line =~ /$expected/) {
+        my $remote_host = $1;
+        my $filesz = $2;
+        my $filename = $3;
+        my $xfer_type = $4;
+        my $user_name = $5;
+
+        if ($^O eq 'darwin') {
+          # MacOSX-specific hack, due to how it handles tmp files
+          $test_file = ('/private' . $test_file);
+        }
+
+        $expected = '127.0.0.1';
+        $self->assert($expected eq $remote_host,
+          "Expected '$expected', got '$remote_host'");
+
+        $expected = -s $test_file;
+        $self->assert($expected == $filesz,
+          "Expected '$expected', got '$filesz'");
+
+        $expected = $test_file;
+        $self->assert($expected eq $filename,
+          "Expected '$expected', got '$filename'");
+
+        $expected = 'b';
+        $self->assert($expected eq $xfer_type,
+          "Expected '$expected', got '$xfer_type'");
+
+        $expected = $setup->{user};
+        $self->assert($expected eq $user_name,
+          "Expected '$expected', got '$user_name'");
+      }
+
+    } else {
+      die("Can't read $xfer_log: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub vroot_scp_log_xferlog_stor {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+  my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
+
+  my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
+  my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 sftp:20 scp:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+
+    TransferLog => $xfer_log,
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_sftp.c' => [
+        "SFTPEngine on",
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        "SFTPHostKey $dsa_host_key",
+      ],
+
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $setup->{log_file},
+        DefaultRoot => '~',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+  require Net::SSH2;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $ssh2 = Net::SSH2->new();
+
+      sleep(1);
+
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->scp_put($setup->{config_file}, 'test.txt')) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't upload $setup->{config_file} to server: [$err_name] ($err_code) $err_str");
+      }
+
+      $ssh2->disconnect();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $xfer_log")) {
+      my $line = <$fh>;
+      chomp($line);
+      close($fh);
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "$line\n";
+      }
+
+      my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+i\s+r\s+(\S+)\s+scp\s+0\s+\*\s+c$';
+
+      $self->assert(qr/$expected/, $line, "Expected '$expected', got '$line'");
+
+      if ($line =~ /$expected/) {
+        my $remote_host = $1;
+        my $filesz = $2;
+        my $filename = $3;
+        my $xfer_type = $4;
+        my $user_name = $5;
+
+        if ($^O eq 'darwin') {
+          # MacOSX-specific hack, due to how it handles tmp files
+          $test_file = ('/private' . $test_file);
+        }
+
+        $expected = '127.0.0.1';
+        $self->assert($expected eq $remote_host,
+          "Expected '$expected', got '$remote_host'");
+
+        $expected = -s $test_file;
+        $self->assert($expected == $filesz,
+          "Expected '$expected', got '$filesz'");
+
+        $expected = $test_file;
+        $self->assert($expected eq $filename,
+          "Expected '$expected', got '$filename'");
+
+        $expected = 'b';
+        $self->assert($expected eq $xfer_type,
+          "Expected '$expected', got '$xfer_type'");
+
+        $expected = $setup->{user};
+        $self->assert($expected eq $user_name,
+          "Expected '$expected', got '$user_name'");
+      }
+
+    } else {
+      die("Can't read $xfer_log: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 1;
