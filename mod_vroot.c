@@ -535,7 +535,12 @@ static cmdtable vroot_cmdtab[] = {
    * even though we appear BEFORE mod_log in the module load order.
    *
    * Thus to do the transformation, we actually use CMD/POST_CMD_ERR phase
-   * handlers here.
+   * handlers here.  The reason to use CMD, rather than POST_CMD, is the
+   * the TransferLog entries are written by mod_xfer, in its CMD handlers.
+   * Given this, you might be tempted to change these to PRE_CMD handlers.
+   * That will not work, either, as the necessary cmd->notes keys are
+   * populated by PRE_CMD handlers in mod_xfer, one of the last modules to
+   * run.
    */
   { CMD,		C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
   { POST_CMD_ERR,	C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
