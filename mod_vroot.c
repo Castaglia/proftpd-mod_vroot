@@ -1,7 +1,7 @@
 /*
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
- * Copyright (c) 2002-2016 TJ Saunders
+ * Copyright (c) 2002-2019 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -542,11 +542,11 @@ static cmdtable vroot_cmdtab[] = {
    * populated by PRE_CMD handlers in mod_xfer, one of the last modules to
    * run.
    */
-  { CMD,		C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
+  { CMD,		C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE, CL_WRITE },
   { POST_CMD_ERR,	C_APPE,	G_NONE, vroot_log_stor, FALSE, FALSE },
-  { CMD,		C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE },
+  { CMD,		C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE, CL_READ },
   { POST_CMD_ERR,	C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE },
-  { CMD,		C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE },
+  { CMD,		C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE, CL_WRITE },
   { POST_CMD_ERR,	C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE },
 
   { 0, NULL }
