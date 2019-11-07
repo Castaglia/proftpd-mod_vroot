@@ -9,8 +9,10 @@ install:
   - sudo apt-get update -qq
   # for unit tests
   - sudo apt-get install -y check
+  - sudo apt-get install -y libsubunit-dev
   # for static code analysis
-  - sudo apt-get install -y cppcheck rats
+  # - sudo apt-get install -y cppcheck
+  # - sudo apt-get install -y rats
   # for test code coverage
   - sudo apt-get install -y lcov
   - gem install coveralls-lcov
@@ -31,9 +33,9 @@ script:
   - cp install-sh proftpd/contrib/mod_vroot/
   - cp -R t/ proftpd/contrib/mod_vroot/t/
   - cd proftpd
-  - ./configure LIBS='-lm -lrt -pthread' --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_vroot
+  - ./configure LIBS='-lm -lsubunit -lrt -pthread' --enable-devel=coverage --enable-dso --enable-tests --with-shared=mod_vroot
   - make
   - make clean
-  - ./configure LIBS='-lm -lrt -pthread' --enable-devel=coverage --enable-tests --with-modules=mod_vroot
+  - ./configure LIBS='-lm -lsubunit -lrt -pthread' --enable-devel=coverage --enable-tests --with-modules=mod_vroot
   - make
   - cd contrib/mod_vroot && make TEST_VERBOSE=1 check && cd ../../
