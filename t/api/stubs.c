@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_vroot API testsuite
- * Copyright (c) 2016-2019 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2020 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -31,7 +31,7 @@ int ServerUseReverseDNS = FALSE;
 server_rec *main_server = NULL;
 pid_t mpid = 1;
 unsigned char is_master = TRUE;
-unsigned int recvd_signal_flags = 0;
+volatile unsigned int recvd_signal_flags = 0;
 module *static_modules[] = { NULL };
 module *loaded_modules = NULL;
 xaset_t *server_list = NULL;
