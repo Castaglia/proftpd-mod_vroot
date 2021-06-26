@@ -1,6 +1,6 @@
 /*
  * ProFTPD: mod_vroot FSIO API
- * Copyright (c) 2002-2017 TJ Saunders
+ * Copyright (c) 2002-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -893,7 +893,7 @@ next_dent:
 
     } else {
       if (vroot_dir_idx < 0 ||
-          vroot_dir_idx >= vroot_dir_aliases->nelts) {
+          (unsigned int) vroot_dir_idx >= vroot_dir_aliases->nelts) {
         return NULL;
       }
 
