@@ -3,7 +3,7 @@ proftpd-mod_vroot
 
 Status
 ------
-[![Build Status](https://travis-ci.org/Castaglia/proftpd-mod_vroot.svg?branch=master)](https://travis-ci.org/Castaglia/proftpd-mod_vroot)
+[![GitHub Actions CI Status](https://github.com/Castaglia/proftpd-mod_vroot/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Castaglia/proftpd-mod_vroot/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-GPL-brightgreen.svg)](https://img.shields.io/badge/license-GPL-brightgreen.svg)
 
 Synopsis
