@@ -9,5 +9,6 @@ mod_vroot.h
 *.lo
 *.log
 *Tests*.log
+*.a
 *.o
 *~
