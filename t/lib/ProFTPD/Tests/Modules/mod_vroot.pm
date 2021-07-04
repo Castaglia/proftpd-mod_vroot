@@ -10313,7 +10313,6 @@ sub vroot_log_extlog_stor {
   auth_group_write($auth_group_file, $group, $gid, $user);
 
   my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
-
   my $ext_log = File::Spec->rel2abs("$tmpdir/custom.log");
 
   my $config = {
@@ -10321,7 +10320,7 @@ sub vroot_log_extlog_stor {
     ScoreboardFile => $scoreboard_file,
     SystemLog => $log_file,
     TraceLog => $log_file,
-    Trace => 'fsio:10',
+    Trace => 'fsio:10 jot:20 vroot:20',
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
