@@ -1,7 +1,7 @@
 /*
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
- * Copyright (c) 2002-2019 TJ Saunders
+ * Copyright (c) 2002-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@ unsigned int vroot_opts = 0;
 module vroot_module;
 
 static int vroot_engine = FALSE;
+static const char *trace_channel = "vroot";
 
 #if PROFTPD_VERSION_NUMBER >= 0x0001030407
 static int vroot_use_mkdtemp = FALSE;
@@ -242,8 +243,127 @@ MODRET set_vrootserverroot(cmd_rec *cmd) {
 /* Command handlers
  */
 
+static const char *vroot_cmd_fixup_path(cmd_rec *cmd, const char *key,
+    int use_best_path) {
+  const char *path;
+  char *real_path = NULL;
+
+  path = pr_table_get(cmd->notes, key, NULL);
+  if (path != NULL) {
+    if (use_best_path == TRUE) {
+      /* Only needed for mod_sftp sessions, to do what mod_xfer does for FTP
+       * commands, but in a way that does not require mod_sftp changes.
+       * Probably too clever.
+       */
+      path = dir_best_path(cmd->pool, path);
+    }
+
+    if (*path == '/') {
+      const char *base_path;
+
+      base_path = vroot_path_get_base(cmd->tmp_pool, NULL);
+      real_path = pdircat(cmd->pool, base_path, path, NULL);
+      vroot_path_clean(real_path);
+
+    } else {
+      real_path = vroot_realpath(cmd->pool, path, VROOT_REALPATH_FL_ABS_PATH);
+    }
+
+    pr_trace_msg(trace_channel, 17,
+      "fixed up '%s' path in command %s; was '%s', now '%s'", key,
+      (char *) cmd->argv[0], path, real_path);
+    pr_table_set(cmd->notes, key, real_path, 0);
+  }
+
+  return real_path;
+}
+
+MODRET vroot_pre_scp_retr(cmd_rec *cmd) {
+  const char *key, *proto, *real_path;
+
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* As a PRE_CMD handler, we only run for SCP sessions. */
+  proto = pr_session_get_protocol(0);
+  if (strcmp(proto, "scp") != 0) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* Unlike SFTP sessions, mod_sftp does NOT set these cmd->notes for SCP
+   * sessions before doing the PRE_CMD dispatching.  So we do it ourselves,
+   * pre-emptively, before using our other machinery.
+   */
+  key = "mod_xfer.retr-path";
+  (void) pr_table_add(cmd->notes, key, pstrdup(cmd->pool, cmd->arg), 0);
+
+  real_path = vroot_cmd_fixup_path(cmd, key, TRUE);
+  if (real_path != NULL) {
+    /* In addition, for SCP sessions, we modify cmd->arg as well, for
+     * mod_sftp's benefit.
+     */
+    cmd->arg = (char *) real_path;
+  }
+
+  return PR_DECLINED(cmd);
+}
+
+MODRET vroot_pre_sftp_retr(cmd_rec *cmd) {
+  const char *key, *proto, *real_path;
+
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* As a PRE_CMD handler, we only run for SFTP sessions. */
+  proto = pr_session_get_protocol(0);
+  if (strcmp(proto, "sftp") != 0) {
+    return PR_DECLINED(cmd);
+  }
+
+  key = "mod_xfer.retr-path";
+  real_path = vroot_cmd_fixup_path(cmd, key, TRUE);
+  if (real_path != NULL) {
+    /* In addition, for SFTP sessions, we modify cmd->arg as well, for
+     * mod_sftp's benefit.
+     */
+    cmd->arg = (char *) real_path;
+  }
+
+  return PR_DECLINED(cmd);
+}
+
+MODRET vroot_post_sftp_retr(cmd_rec *cmd) {
+  const char *key, *path, *proto;
+
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* As a POST_CMD handler, we only run for SFTP sessions. */
+  proto = pr_session_get_protocol(0);
+  if (strcmp(proto, "sftp") != 0) {
+    return PR_DECLINED(cmd);
+  }
+
+  key = "mod_xfer.retr-path";
+  path = pr_table_get(cmd->notes, key, NULL);
+  if (path != NULL) {
+    /* In addition, for SFTP sessions, we modify session.xfer.path as well,
+     * for mod_xfer's benefit in TransferLog entries.
+     */
+    session.xfer.path = pstrdup(session.xfer.p, path);
+  }
+
+  return PR_DECLINED(cmd);
+}
+
 MODRET vroot_log_retr(cmd_rec *cmd) {
-  const char *key, *path;
+  const char *key;
 
   if (vroot_engine == FALSE ||
       session.chroot_path == NULL) {
@@ -251,30 +371,96 @@ MODRET vroot_log_retr(cmd_rec *cmd) {
   }
 
   key = "mod_xfer.retr-path";
+  (void) vroot_cmd_fixup_path(cmd, key, FALSE);
+  return PR_DECLINED(cmd);
+}
 
+MODRET vroot_pre_scp_stor(cmd_rec *cmd) {
+  const char *key, *proto, *real_path;
+
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* As a PRE_CMD handler, we only run for SCP sessions. */
+  proto = pr_session_get_protocol(0);
+  if (strcmp(proto, "scp") != 0) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* Unlike SFTP sessions, mod_sftp does NOT set these cmd->notes for SCP
+   * sessions before doing the PRE_CMD dispatching.  So we do it ourselves,
+   * pre-emptively, before using our other machinery.
+   */
+  key = "mod_xfer.store-path";
+  (void) pr_table_add(cmd->notes, key, pstrdup(cmd->pool, cmd->arg), 0);
+
+  real_path = vroot_cmd_fixup_path(cmd, key, TRUE);
+  if (real_path != NULL) {
+    /* In addition, for SCP sessions, we modify cmd->arg as well, for
+     * mod_sftp's benefit.
+     */
+    cmd->arg = (char *) real_path;
+  }
+
+  return PR_DECLINED(cmd);
+}
+
+MODRET vroot_pre_sftp_stor(cmd_rec *cmd) {
+  const char *key, *proto, *real_path;
+
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* As a PRE_CMD handler, we only run for SFTP sessions. */
+  proto = pr_session_get_protocol(0);
+  if (strcmp(proto, "sftp") != 0) {
+    return PR_DECLINED(cmd);
+  }
+
+  key = "mod_xfer.store-path";
+  real_path = vroot_cmd_fixup_path(cmd, key, TRUE);
+  if (real_path != NULL) {
+    /* In addition, for SFTP sessions, we modify cmd->arg as well, for
+     * mod_sftp's benefit.
+     */
+    cmd->arg = (char *) real_path;
+  }
+
+  return PR_DECLINED(cmd);
+}
+
+MODRET vroot_post_sftp_stor(cmd_rec *cmd) {
+  const char *key, *path, *proto;
+
+  if (vroot_engine == FALSE ||
+      session.chroot_path == NULL) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* As a POST_CMD handler, we only run for SFTP sessions. */
+  proto = pr_session_get_protocol(0);
+  if (strcmp(proto, "sftp") != 0) {
+    return PR_DECLINED(cmd);
+  }
+
+  key = "mod_xfer.store-path";
   path = pr_table_get(cmd->notes, key, NULL);
   if (path != NULL) {
-    char *real_path;
-
-    if (*path == '/') {
-      const char *base_path;
-
-      base_path = vroot_path_get_base(cmd->tmp_pool, NULL);
-      real_path = pdircat(cmd->pool, base_path, path, NULL);
-      vroot_path_clean(real_path);
-
-    } else {
-      real_path = vroot_realpath(cmd->pool, path, VROOT_REALPATH_FL_ABS_PATH);
-    }
-
-    pr_table_set(cmd->notes, key, real_path, 0);
+    /* In addition, for SFTP sessions, we modify session.xfer.path as well,
+     * for mod_xfer's benefit in TransferLog entries.
+     */
+    session.xfer.path = pstrdup(session.xfer.p, path);
   }
 
   return PR_DECLINED(cmd);
 }
 
 MODRET vroot_log_stor(cmd_rec *cmd) {
-  const char *key, *path;
+  const char *key;
 
   if (vroot_engine == FALSE ||
       session.chroot_path == NULL) {
@@ -282,25 +468,7 @@ MODRET vroot_log_stor(cmd_rec *cmd) {
   }
 
   key = "mod_xfer.store-path";
-
-  path = pr_table_get(cmd->notes, key, NULL);
-  if (path != NULL) {
-    char *real_path;
-
-    if (*path == '/') {
-      const char *base_path;
-
-      base_path = vroot_path_get_base(cmd->tmp_pool, NULL);
-      real_path = pdircat(cmd->pool, base_path, path, NULL);
-      vroot_path_clean(real_path);
-
-    } else {
-      real_path = vroot_realpath(cmd->pool, path, VROOT_REALPATH_FL_ABS_PATH);
-    }
-
-    pr_table_set(cmd->notes, key, real_path, 0);
-  }
-
+  (void) vroot_cmd_fixup_path(cmd, key, FALSE);
   return PR_DECLINED(cmd);
 }
 
@@ -527,12 +695,13 @@ static cmdtable vroot_cmdtab[] = {
   /* These command handlers are for manipulating cmd->notes, to get
    * paths properly logged.
    *
-   * Ideally these would be LOG_CMD/LOG_CMD_ERR phase handlers.  HOWEVER,
-   * we need to transform things before the cmd is dispatched to mod_log,
-   * and mod_log uses a C_ANY handler for logging.  And when dispatching,
-   * C_ANY handlers are run before named handlers.  This means that using
-   * LOG_CMD/LOG_CMD_ERR handlers would be run AFTER mod_log's handler,
-   * even though we appear BEFORE mod_log in the module load order.
+   * Ideally these POST_CMD handlers would be LOG_CMD/LOG_CMD_ERR phase
+   * handlers.  HOWEVER, we need to transform things before the cmd is
+   * dispatched to mod_log, and mod_log uses a C_ANY handler for logging.
+   * And when dispatching, C_ANY handlers are run before named handlers.
+   * This means that using * LOG_CMD/LOG_CMD_ERR handlers would be run AFTER
+   * mod_log's handler, even though we appear BEFORE mod_log in the module
+   * load order.
    *
    * Thus to do the transformation, we actually use CMD/POST_CMD_ERR phase
    * handlers here.  The reason to use CMD, rather than POST_CMD, is the
@@ -548,6 +717,22 @@ static cmdtable vroot_cmdtab[] = {
   { POST_CMD_ERR,	C_RETR,	G_NONE, vroot_log_retr, FALSE, FALSE },
   { CMD,		C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE, CL_WRITE },
   { POST_CMD_ERR,	C_STOR,	G_NONE, vroot_log_stor, FALSE, FALSE },
+
+  /* To make this more complicated, we DO actually want these handlers to
+   * run as PRE_CMD handlers, but only for mod_sftp sessions.  Why?  The
+   * mod_sftp module does not use the normal CMD handlers; it handles
+   * dispatching on its own.  And we do still want mod_vroot to fix up
+   * the paths properly for SFTP/SCP sessions, too.
+   */
+  { PRE_CMD,		C_APPE,	G_NONE, vroot_pre_sftp_stor, FALSE, FALSE, CL_WRITE },
+  { POST_CMD,		C_APPE,	G_NONE, vroot_post_sftp_stor, FALSE, FALSE },
+  { PRE_CMD,		C_RETR,	G_NONE, vroot_pre_sftp_retr, FALSE, FALSE, CL_READ },
+  { POST_CMD,		C_RETR,	G_NONE, vroot_post_sftp_retr, FALSE, FALSE },
+  { PRE_CMD,		C_STOR,	G_NONE, vroot_pre_sftp_stor, FALSE, FALSE, CL_WRITE },
+  { POST_CMD,		C_STOR,	G_NONE, vroot_post_sftp_stor, FALSE, FALSE },
+
+  { PRE_CMD,		C_RETR,	G_NONE, vroot_pre_scp_retr, FALSE, FALSE, CL_READ },
+  { PRE_CMD,		C_STOR,	G_NONE, vroot_pre_scp_stor, FALSE, FALSE, CL_WRITE },
 
   { 0, NULL }
 };
