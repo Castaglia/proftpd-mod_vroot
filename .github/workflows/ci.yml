@@ -15,20 +15,21 @@ jobs:
     strategy:
       matrix:
         compiler:
-          - gcc
           - clang
+          - gcc
+        container:
+          - alpine:3.14
+          - centos:8
+          - ubuntu:18.04
 
-    container: ubuntu:18.04
+    container: ${{ matrix.container }}
 
     steps:
-      - name: Install git
-        run: |
-          apt-get update -qq
-          apt-get install -y git
-
       - name: Checkout ProFTPD
-        run: |
-          git clone --depth 1 https://github.com/proftpd/proftpd.git proftpd
+        uses: actions/checkout@v2
+        with:
+          repository: proftpd/proftpd
+          path: proftpd
 
       - name: Checkout module source code
         uses: actions/checkout@v2
@@ -36,7 +37,10 @@ jobs:
           path: proftpd/contrib/mod_vroot
 
       - name: Whitespace check
+        if: ${{ matrix.container == 'ubuntu:18.04' }}
         run: |
+          apt-get update -qq
+          apt-get install -y git
           cd proftpd/contrib/mod_vroot
           if [[ -n $(git diff --check HEAD^) ]]; then
             echo "You must remove whitespace before submitting a pull request"
@@ -45,34 +49,69 @@ jobs:
             exit 1
           fi
 
-      - name: Install packages
+      - name: Install Alpine packages
+        if: ${{ matrix.container == 'alpine:3.14' }}
+        run: |
+          apk update
+          # for builds
+          apk add bash build-base clang compiler-rt-static gcc make zlib-dev
+          # for unit tests
+          apk add check check-dev subunit subunit-dev
+
+          # for OpenSSL support
+          apk add openssl openssl-dev
+
+          # for debugging
+          clang --version
+          gcc --version
+          openssl version -a
+
+      - name: Install Centos packages
+        if: ${{ matrix.container == 'centos:8' }}
         run: |
           # Need to add other repos for e.g. libsodium
+          yum install -y dnf-plugins-core epel-release clang gcc make zlib-devel
+          yum config-manager --set-enabled powertools
+          # for unit tests
+          yum install -y check-devel https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-1.4.0-1.el8.x86_64.rpm https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-devel-1.4.0-1.el8.x86_64.rpm
+
+          # for OpenSSL support
+          yum install -y openssl-devel
+
+          # for debugging
+          clang --version
+          gcc --version
+          openssl version -a
+
+      - name: Install Ubuntu packages
+        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        run: |
           apt-get update -qq
           # for builds
-          apt-get install -y git make
+          apt-get install -y clang gcc make
           # for unit tests
           apt-get install -y check libsubunit-dev
 
-          # module dependencies, if any
+          # for OpenSSL support
+          apt-get install -y libssl-dev
 
-          # for integration/regression test
           # for test code coverage
           apt-get install -y lcov ruby
           gem install coveralls-lcov
           # for HTML validation
           apt-get install -y tidy
-          # for clang
-          apt-get install -y clang
+
           # for debugging
           clang --version
           gcc --version
+          openssl version -a
 
       - name: Prepare code coverage
+        if: ${{ matrix.container == 'ubuntu:18.04' }}
         run: |
           lcov --directory proftpd --zerocounters
 
-      - name: Build with static modules
+      - name: Build as static module
         env:
           CC: ${{ matrix.compiler }}
         run: |
@@ -83,16 +122,18 @@ jobs:
       - name: Run unit tests
         env:
           CC: ${{ matrix.compiler }}
+        # Note: Skip the unit tests on Alpine
+        if: ${{ matrix.container != 'alpine:3.14' }}
         run: |
           cd proftpd/contrib/mod_vroot
           make TEST_VERBOSE=1 check
 
-      - name: Install with static modules
+      - name: Install as static module
         run: |
           cd proftpd
           make install
 
-      - name: Build with shared modules
+      - name: Build as shared module
         env:
           CC: ${{ matrix.compiler }}
         run: |
@@ -101,7 +142,7 @@ jobs:
           ./configure LIBS="-lm -lsubunit -lrt -pthread" --enable-devel --enable-dso --with-shared=mod_vroot
           make
 
-      - name: Install with shared modules
+      - name: Install as shared module
         run: |
           cd proftpd
           make install
@@ -119,7 +160,7 @@ jobs:
           CC: ${{ matrix.compiler }}
           CFLAGS: -fsanitize=address,undefined
           LDFLAGS: -fsanitize=address,undefined --coverage
-        if: ${{ matrix.compiler == 'clang' }}
+        if: ${{ matrix.compiler == 'gcc' && matrix.container == 'ubuntu:18.04' }}
         run: |
           cd proftpd
           make clean
@@ -130,6 +171,7 @@ jobs:
           make TEST_VERBOSE=1 check
 
       - name: Check HTML docs
+        if: ${{ matrix.container == 'ubuntu:18.04' }}
         run: |
           cd proftpd/contrib/mod_vroot
           echo "Processing mod_vroot.html"
