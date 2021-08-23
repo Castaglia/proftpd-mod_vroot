@@ -594,18 +594,30 @@ MODRET vroot_post_pass(cmd_rec *cmd) {
 
 MODRET vroot_post_pass_err(cmd_rec *cmd) {
   if (vroot_engine == TRUE) {
-    /* If not chrooted, unregister vroot. */
-    if (session.chroot_path == NULL) {
-      if (pr_unregister_fs("/") < 0) {
-        pr_log_debug(DEBUG2, MOD_VROOT_VERSION
-          ": error unregistering vroot: %s", strerror(errno));
+    const void *hint;
+    /* Look for any notes/hints attached to this command which might indicate
+     * that it is not a real PASS command error, but rather a fake command
+     * dispatched for e.g. logging/handling by other modules.  We pay attention
+     * to this here due to e.g. AIX loginfailed(3) semantics (Issue #693).
+     */
+    hint = pr_table_get(cmd->notes, "mod_sftp.nonfatal-attempt", NULL);
+    if (hint == NULL) {
+      /* If not chrooted, unregister vroot. */
+      if (session.chroot_path == NULL) {
+        if (pr_unregister_fs("/") < 0) {
+          pr_log_debug(DEBUG2, MOD_VROOT_VERSION
+            ": error unregistering vroot: %s", strerror(errno));
 
-      } else {
-        pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unregistered");
+        } else {
+          pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unregistered");
+        }
       }
+
+      vroot_alias_free();
+    } else {
+      pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot 'mod_sftp.nonfatal-attempt' detected");
     }
 
-    vroot_alias_free();
   }
 
   return PR_DECLINED(cmd);
