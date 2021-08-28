@@ -595,6 +595,7 @@ MODRET vroot_post_pass(cmd_rec *cmd) {
 MODRET vroot_post_pass_err(cmd_rec *cmd) {
   if (vroot_engine == TRUE) {
     const void *hint;
+    
     /* Look for any notes/hints attached to this command which might indicate
      * that it is not a real PASS command error, but rather a fake command
      * dispatched for e.g. logging/handling by other modules.  We pay attention
@@ -614,8 +615,6 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
       }
 
       vroot_alias_free();
-    } else {
-      pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot 'mod_sftp.nonfatal-attempt' detected");
     }
 
   }
