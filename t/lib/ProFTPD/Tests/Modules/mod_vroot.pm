@@ -10411,6 +10411,7 @@ sub vroot_config_deleteabortedstores_cmd_aborted {
   $self->assert_child_ok($pid);
 
   test_cleanup($setup->{log_file}, $ex);
+  delete($ENV{TEST_VERBOSE});
 }
 
 sub vroot_alias_var_u_file {

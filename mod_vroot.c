@@ -602,9 +602,34 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
      * to this here due to e.g. AIX loginfailed(3) semantics (Issue #693).
      */
     hint = pr_table_get(cmd->notes, "mod_sftp.nonfatal-attempt", NULL);
+
+    /* NOTE: The "mod_sftp.nonfatal-attempt" note was added in 1.3.7b.  So
+     * if our version is older than that, we expect this hint to be null,
+     * and need to unregister ourselves.
+     *
+     * On the other hand, if our version is newer than that, and hint is NOT
+     * null, then we need to unregister ourselves.  Why?  The PRE_CMD PASS
+     * handler will re-register this FS at that time.
+     */
+
+#if PROFTPD_VERSION_NUMBER < 0x0001030707
     if (hint == NULL) {
+#else
+    if (hint != NULL) {
+#endif /* ProFTPD 1.3.7b or later */
       /* If not chrooted, unregister vroot. */
       if (session.chroot_path == NULL) {
+        /* Due to interactions with mod_auth_file and mod_ifsession, it is
+         * possible for AuthUserFile/AuthGroupFile to currently be opened with
+         * pr_fh_t from the vroot FSIO, as from previous authentication
+         * attempts (particularly for SSH logins).  So we try to ensure those
+         * are closed, as the pr_fh_t pool will be issued from the vroot FSIO
+         * pool.  Failure to do so could lead to inexplicable segfaults and or
+         * "attempt to free already freed block" log messages.
+         */
+        pr_auth_endpwent(cmd->tmp_pool);
+        pr_auth_endgrent(cmd->tmp_pool);
+
         if (pr_unregister_fs("/") < 0) {
           pr_log_debug(DEBUG2, MOD_VROOT_VERSION
             ": error unregistering vroot: %s", strerror(errno));
@@ -613,10 +638,7 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
           pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unregistered");
         }
       }
-
-      vroot_alias_free();
     }
-
   }
 
   return PR_DECLINED(cmd);
