@@ -670,6 +670,10 @@ static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
   real_path = value_data;
   dir_path = user_data;
 
+  pr_trace_msg(trace_channel, 19,
+    "scanning aliases: aliased path = '%s', real path = '%s' in directory '%s'",
+    alias_path, real_path, dir_path);
+
   ptr = strrchr(alias_path, '/');
   if (ptr == NULL) {
     /* This is not likely to happen, but if it does, simply move to the
@@ -688,11 +692,30 @@ static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
   dir_pathlen = strlen(dir_path);
 
   if (strncmp(dir_path, alias_path, dir_pathlen) == 0) {
+    const char *alias_rel_path;
+
+    /* Now we need to determine if the alias path in question belongs in this
+     * directory, or a subdirectory.  If it belongs in a subdirectory, then
+     * we still need to add a directory entry here, constructing that alias
+     * path to the subdirectory (Issue #22).
+     */
+    alias_rel_path = alias_path + dir_pathlen;
+    if (alias_rel_path[0] == '/') {
+      alias_rel_path++;
+    }
+    ptr = strchr(alias_rel_path, '/');
+
     pr_trace_msg(trace_channel, 17,
       "adding VRootAlias '%s' to list of aliases contained in '%s'",
       alias_path, dir_path);
-    *((char **) push_array(vroot_dir_aliases)) = pstrdup(vroot_dir_pool,
-      ptr + 1);
+    if (ptr != NULL) {
+      *((char **) push_array(vroot_dir_aliases)) = pstrndup(vroot_dir_pool,
+        alias_rel_path, ptr - alias_rel_path);
+
+    } else {
+      *((char **) push_array(vroot_dir_aliases)) = pstrdup(vroot_dir_pool,
+        alias_rel_path);
+    }
   }
 
   return 0;

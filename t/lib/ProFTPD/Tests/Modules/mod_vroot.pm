@@ -209,6 +209,16 @@ my $TESTS = {
     test_class => [qw(forking mod_facts)],
   },
 
+  vroot_alias_dir_list_multi_issue22 => {
+    order => ++$order,
+    test_class => [qw(forking mod_facts)],
+  },
+
+  vroot_alias_dir_mlsd_multi_issue22 => {
+    order => ++$order,
+    test_class => [qw(forking)],
+  },
+
   vroot_alias_symlink_list => {
     order => ++$order,
     test_class => [qw(forking)],
@@ -7157,6 +7167,371 @@ sub vroot_alias_dir_mlst {
   test_cleanup($setup->{log_file}, $ex);
 }
 
+sub vroot_alias_dir_list_multi_issue22 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  my $src_dir1 = File::Spec->rel2abs("$tmpdir/foo1.d");
+  create_test_dir($setup, $src_dir1);
+
+  my $src_file1 = File::Spec->rel2abs("$src_dir1/test.txt");
+  create_test_file($setup, $src_file1);
+
+  my $src_dir2 = File::Spec->rel2abs("$tmpdir/foo2.d");
+  create_test_dir($setup, $src_dir2);
+
+  my $dst_dir1 = 'bar1.d';
+  create_test_dir($setup, File::Spec->rel2abs("$tmpdir/$dst_dir1"));
+
+  my $dst_dir2 = 'bar2.d';
+  my $dst_dir3 = 'bar3.d';
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20 vroot.alias:20 vroot.fsio:20 vroot.path:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+
+    IfModules => {
+      'mod_vroot.c' => [
+        'VRootEngine on',
+        "VRootLog $setup->{log_file}",
+        'DefaultRoot ~',
+
+        "VRootAlias $src_dir1 $dst_dir1/$dst_dir2",
+        "VRootAlias $src_dir1 $dst_dir2",
+        "VRootAlias $src_dir2 $dst_dir3",
+      ],
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Allow server to start up
+      sleep(1);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf = '';
+      $conn->read($buf, 8192, 5);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# response:\n$buf\n";
+      }
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/\n/, $buf)];
+      foreach my $line (@$lines) {
+        if ($line =~ /^\S+\s+\d+\s+\S+\s+\S+\s+.*?\s+(\S+)$/) {
+          # Watch for unexpected duplicates
+          if (exists($res->{$1})) {
+            die("LIST data already contains $1");
+          }
+
+          $res->{$1} = 1;
+        }
+      }
+
+      unless (scalar(keys(%$res)) > 0) {
+        die("LIST data unexpectedly empty");
+      }
+
+      my $expected = {
+        'bar1.d' => 1,
+        'bar2.d' => 1,
+        'bar3.d' => 1,
+        'foo1.d' => 1,
+        'foo2.d' => 1,
+        'vroot.conf' => 1,
+        'vroot.group' => 1,
+        'vroot.passwd' => 1,
+        'vroot.pid' => 1,
+        'vroot.scoreboard' => 1,
+        'vroot.scoreboard.lck' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch = '';
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in LIST data")
+      }
+
+      $client->cwd('bar1.d/bar2.d');
+
+      $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      $buf = '';
+      $conn->read($buf, 8192, 5);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# response:\n$buf\n";
+      }
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      $res = {};
+      $lines = [split(/\n/, $buf)];
+      foreach my $line (@$lines) {
+        if ($line =~ /^\S+\s+\d+\s+\S+\s+\S+\s+.*?\s+(\S+)$/) {
+          # Watch for unexpected duplicates
+          if (exists($res->{$1})) {
+            die("LIST data already contains $1");
+          }
+
+          $res->{$1} = 1;
+        }
+      }
+
+      unless (scalar(keys(%$res)) > 0) {
+        die("LIST data unexpectedly empty");
+      }
+
+      $expected = {
+        'test.txt' => 1,
+      };
+
+      $ok = 1;
+      $mismatch = '';
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in LIST data")
+      }
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub vroot_alias_dir_mlsd_multi_issue22 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  my $src_dir1 = File::Spec->rel2abs("$tmpdir/foo1.d");
+  create_test_dir($setup, $src_dir1);
+
+  my $src_dir2 = File::Spec->rel2abs("$tmpdir/foo2.d");
+  create_test_dir($setup, $src_dir2);
+
+  my $dst_dir1 = 'bar1.d';
+  my $dst_dir2 = 'bar2.d';
+  my $dst_dir3 = 'bar3.d';
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20 vroot.fsio:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+
+    IfModules => {
+      'mod_vroot.c' => [
+        'VRootEngine on',
+        "VRootLog $setup->{log_file}",
+        'DefaultRoot ~',
+
+        "VRootAlias $src_dir1 $dst_dir1/$dst_dir2",
+        "VRootAlias $src_dir1 $dst_dir2",
+        "VRootAlias $src_dir2 $dst_dir3",
+      ],
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Allow server to start up
+      sleep(1);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->mlsd_raw();
+      unless ($conn) {
+        die("Failed to MLSD: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf = '';
+      $conn->read($buf, 8192, 5);
+      eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# response:\n$buf\n";
+      }
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/\n/, $buf)];
+      foreach my $line (@$lines) {
+        if ($line =~ /^modify=\S+;perm=\S+;type=\S+;unique=\S+;UNIX\.group=\d+;UNIX\.groupname=\S+;UNIX\.mode=\d+;UNIX\.owner=\d+;UNIX\.ownername=\S+; (.*?)$/) {
+          # Watch for unexpected duplicates
+          if (exists($res->{$1})) {
+            die("MLSD data already contains $1");
+          }
+
+          $res->{$1} = 1;
+        }
+      }
+
+      unless (scalar(keys(%$res)) > 0) {
+        die("MLSD data unexpectedly empty");
+      }
+
+      my $expected = {
+        '.' => 1,
+        '..' => 1,
+        'bar2.d' => 1,
+        'bar3.d' => 1,
+        'foo1.d' => 1,
+        'foo2.d' => 1,
+        'vroot.conf' => 1,
+        'vroot.group' => 1,
+        'vroot.passwd' => 1,
+        'vroot.pid' => 1,
+        'vroot.scoreboard' => 1,
+        'vroot.scoreboard.lck' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch = '';
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in MLSD data")
+      }
+
+      $client->mlst('bar1.d/bar2.d');
+      $client->quit();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
 sub vroot_alias_symlink_list {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
@@ -11400,72 +11775,38 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
 
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs("$tmpdir/$user");
-  mkpath($home_dir);
-  my $uid = 500;
-  my $gid = 500;
+  my $home_dir = File::Spec->rel2abs("$tmpdir/proftpd");
+  my $setup = test_setup($tmpdir, 'vroot', undef, undef, undef, undef, undef,
+    $home_dir);
 
   # In order for the real /tmp/vroot.d directory to be visible, via
   # VRootAlias, within the vroot, the leading /tmp directory needs to
   # actually exist with the vroot.  In other words, the path needs to be
   # real, even if the leaf is virtual.
   my $user_tmpdir = File::Spec->rel2abs("$home_dir/tmp");
-  mkpath($user_tmpdir);
+  create_test_dir($setup, $user_tmpdir);
 
-  my $test_dir = File::Spec->rel2abs("/tmp/vroot.d");
-  mkpath($test_dir);
+  my $test_dir = File::Spec->rel2abs("$tmpdir/vroot.d");
+  create_test_dir($setup, $test_dir);
 
   my $test_file = File::Spec->rel2abs("$test_dir/test.txt");
-  if (open(my $fh, "> $test_file")) {
-    close($fh);
-
-  } else {
-    die("Can't open $test_file: $!");
-  }
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir, $user_tmpdir, $test_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir, $user_tmpdir, $test_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
+  create_test_file($setup, $test_file);
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:20 vroot:20',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:20 vroot:20 vroot.fsio:20 vroot.path:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     ShowSymlinks => 'off',
 
     IfModules => {
       'mod_vroot.c' => [
         'VRootEngine on',
-        "VRootLog $log_file",
+        "VRootLog $setup->{log_file}",
         'DefaultRoot ~',
         "VRootAlias $test_dir ~/vroot.d",
         "VRootAlias $test_dir ~/tmp/vroot.d",
@@ -11477,7 +11818,8 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -11495,19 +11837,17 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
   if ($pid) {
     eval {
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->login($user, $passwd);
+      $client->login($setup->{user}, $setup->{passwd});
 
       my ($resp_code, $resp_msg) = $client->pwd();
 
-      my $expected;
-
-      $expected = 257;
+      my $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "\"/\" is the current directory";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->cwd('/tmp');
 
@@ -11520,6 +11860,10 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
       my $buf;
       $conn->read($buf, 8192, 5);
       eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# response:\n$buf\n";
+      }
 
       # We have to be careful of the fact that readdir returns directory
       # entries in an unordered fashion.
@@ -11559,7 +11903,6 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -11568,7 +11911,7 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -11578,18 +11921,10 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub vroot_alias_enametoolong_bug59 {
