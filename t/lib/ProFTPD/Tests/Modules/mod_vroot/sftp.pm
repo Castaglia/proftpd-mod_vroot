@@ -6,6 +6,7 @@ use strict;
 
 use Cwd;
 use Digest::MD5;
+use File::Copy;
 use File::Path qw(mkpath rmtree);
 use File::Spec;
 use IO::Handle;
@@ -129,6 +130,11 @@ my $TESTS = {
     test_class => [qw(bug forking mod_sftp scp)],
   },
 
+  vroot_alias_dir_sftp_publickey_issue30 => {
+    order => ++$order,
+    test_class => [qw(forking mod_sftp sftp)],
+  },
+
 };
 
 sub new {
@@ -161,6 +167,25 @@ sub set_up {
 }
 
 # Support routines
+
+sub create_test_dir {
+  my $setup = shift;
+  my $sub_dir = shift;
+
+  mkpath($sub_dir);
+
+  # Make sure that, if we're running as root, that the sub directory has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chmod(0755, $sub_dir)) {
+      die("Can't set perms on $sub_dir to 0755: $!");
+    }
+
+    unless (chown($setup->{uid}, $setup->{gid}, $sub_dir)) {
+      die("Can't set owner of $sub_dir to $setup->{uid}/$setup->{gid}: $!");
+    }
+  }
+}
 
 sub create_test_file {
   my $setup = shift;
@@ -3793,6 +3818,214 @@ sub vroot_scp_log_xferlog_stor {
   }
 
   test_cleanup($setup->{log_file}, $ex);
+}
+
+sub vroot_alias_dir_sftp_publickey_issue30 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  my $src_dir = File::Spec->rel2abs("$tmpdir/foo.d");
+  create_test_dir($setup, $src_dir);
+
+  my $dst_dir = '~/bar.d';
+
+  my $test_file1 = File::Spec->rel2abs("$tmpdir/foo.d/a.txt");
+  create_test_file($setup, $test_file1);
+
+  my $test_file2 = File::Spec->rel2abs("$tmpdir/foo.d/b.txt");
+  create_test_file($setup, $test_file2);
+
+  my $test_file3 = File::Spec->rel2abs("$tmpdir/foo.d/c.txt");
+  create_test_file($setup, $test_file3);
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+  my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_sftp/ssh_host_dsa_key");
+
+  my $rsa_priv_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_sftp/test_rsa_key");
+  my $rsa_pub_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_sftp/test_rsa_key.pub");
+  my $rsa_rfc4716_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_sftp/authorized_rsa_keys2");
+
+  my $authorized_keys = File::Spec->rel2abs("$tmpdir/.authorized_keys");
+  unless (copy($rsa_rfc4716_key, $authorized_keys)) {
+    die("Can't copy $rsa_rfc4716_key to $authorized_keys: $!");
+  }
+
+  # Make sure that, if we're running as root, that the authorized_keys file has
+  # permissions/privs set for the account we create
+  if ($< == 0) {
+    unless (chown($setup->{uid}, $setup->{gid}, $authorized_keys)) {
+      die("Can't set owner of $authorized_keys to $setup->{uid}/$setup->{gid}: $!");
+    }
+  }
+
+  $ENV{TEST_VERBOSE} = 1;
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'auth:20 fsio:20 ssh2:20 vroot:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+
+    IfModules => {
+      'mod_sftp.c' => [
+        "SFTPEngine on",
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        "SFTPHostKey $dsa_host_key",
+        "SFTPAuthorizedUserKeys file:~/.authorized_keys",
+      ],
+
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $setup->{log_file},
+        DefaultRoot => '~',
+
+        VRootAlias => "$src_dir $dst_dir",
+      },
+
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  require Net::SSH2;
+
+  my $ex;
+
+  # Ignore SIGPIPE
+  local $SIG{PIPE} = sub { };
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $ssh2 = Net::SSH2->new();
+
+      sleep(1);
+
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_publickey($setup->{user}, $rsa_pub_key,
+          $rsa_priv_key)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $sftp = $ssh2->sftp();
+      unless ($sftp) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't use SFTP on SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $dir = $sftp->opendir('/');
+      unless ($dir) {
+        my ($err_code, $err_name) = $sftp->error();
+        die("Can't open directory '.': [$err_name] ($err_code)");
+      }
+
+      my $res = {};
+
+      my $file = $dir->read();
+      while ($file) {
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "# READDIR: $file->{name}\n";
+        }
+
+        $res->{$file->{name}} = $file;
+        $file = $dir->read();
+      }
+
+      my $expected = {
+        '.' => 1,
+        '..' => 1,
+        '.authorized_keys' => 1,
+        'foo.d' => 1,
+        'bar.d' => 1,
+        'vroot.conf' => 1,
+        'vroot.group' => 1,
+        'vroot.passwd' => 1,
+        'vroot.pid' => 1,
+        'vroot.scoreboard' => 1,
+        'vroot.scoreboard.lck' => 1,
+      };
+
+      # To issue the FXP_CLOSE, we have to explicitly destroy the dirhandle
+      $dir = undef;
+
+      $ssh2->disconnect();
+
+      my $ok = 1;
+      my $mismatch;
+
+      my $seen = [];
+      foreach my $name (keys(%$res)) {
+        push(@$seen, $name);
+
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in READDIR data")
+      }
+
+      # Now remove from $expected all of the paths we saw; if there are
+      # any entries remaining in $expected, something went wrong.
+      foreach my $name (@$seen) {
+        delete($expected->{$name});
+      }
+
+      my $remaining = scalar(keys(%$expected));
+      $self->assert(0 == $remaining,
+        test_msg("Expected 0, got $remaining"));
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+  delete($ENV{TEST_VERBOSE});
 }
 
 1;
