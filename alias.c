@@ -1,6 +1,6 @@
 /*
  * ProFTPD: mod_vroot Alias API
- * Copyright (c) 2002-2016 TJ Saunders
+ * Copyright (c) 2002-2021 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,11 +53,14 @@ int vroot_alias_do(int cb(const void *key_data, size_t key_datasz,
 }
 
 int vroot_alias_exists(const char *path) {
+  const void *v;
+
   if (path == NULL) {
     return FALSE;
   }
 
-  if (pr_table_get(alias_tab, path, 0) != NULL) {
+  v = pr_table_get(alias_tab, path, 0);
+  if (v != NULL) {
     return TRUE;
   }
 
