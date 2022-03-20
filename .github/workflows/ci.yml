@@ -79,7 +79,7 @@ jobs:
           yum install -y check-devel https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-1.4.0-1.el8.x86_64.rpm https://cbs.centos.org/kojifiles/packages/subunit/1.4.0/1.el8/x86_64/subunit-devel-1.4.0-1.el8.x86_64.rpm
 
           # for OpenSSL support
-          yum install -y openssl-devel
+          yum install -y openssl openssl-devel
 
           # for debugging
           clang --version
