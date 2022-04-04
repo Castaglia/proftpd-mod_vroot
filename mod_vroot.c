@@ -1,7 +1,7 @@
 /*
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
- * Copyright (c) 2002-2019 TJ Saunders
+ * Copyright (c) 2002-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -395,6 +395,11 @@ MODRET vroot_post_pass(cmd_rec *cmd) {
 
     /* If not chrooted, unregister vroot. */
     if (session.chroot_path == NULL) {
+
+      /* mod_auth_file may have opened files using our FS. */
+      (void) pr_auth_endpwent(session.pool);
+      (void) pr_auth_endgrent(session.pool);
+
       if (pr_unregister_fs("/") < 0) {
         pr_log_debug(DEBUG2, MOD_VROOT_VERSION
           ": error unregistering vroot: %s", strerror(errno));
@@ -426,8 +431,14 @@ MODRET vroot_post_pass(cmd_rec *cmd) {
 
 MODRET vroot_post_pass_err(cmd_rec *cmd) {
   if (vroot_engine == TRUE) {
+
     /* If not chrooted, unregister vroot. */
     if (session.chroot_path == NULL) {
+
+      /* mod_auth_file may have opened files using our FS. */
+      (void) pr_auth_endpwent(session.pool);
+      (void) pr_auth_endgrent(session.pool);
+
       if (pr_unregister_fs("/") < 0) {
         pr_log_debug(DEBUG2, MOD_VROOT_VERSION
           ": error unregistering vroot: %s", strerror(errno));
