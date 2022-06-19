@@ -106,6 +106,7 @@ jobs:
             libfile-copy-recursive-perl \
             libfile-path-tiny-perl \
             libfile-spec-native-perl \
+            libnet-inet6glue-perl \
             libnet-ssh2-perl \
             libnet-ssleay-perl \
             libnet-telnet-perl \
