@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_vroot testsuite
- * Copyright (c) 2016 TJ Saunders <tj@castaglia.org>
+ * Copyright (c) 2016-2022 TJ Saunders <tj@castaglia.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,8 +58,8 @@ START_TEST (alias_init_test) {
   int res;
 
   res = vroot_alias_init(NULL);
-  fail_unless(res < 0, "Failed to handle null pool");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null pool");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 }
 END_TEST
@@ -68,7 +68,7 @@ START_TEST (alias_count_test) {
   unsigned int res;
 
   res = vroot_alias_count();
-  fail_unless(res == 0, "Expected 0, got %u", res);
+  ck_assert_msg(res == 0, "Expected 0, got %u", res);
 }
 END_TEST
 
@@ -77,11 +77,11 @@ START_TEST (alias_exists_test) {
   const char *path;
 
   res = vroot_alias_exists(NULL);
-  fail_unless(res == FALSE, "Failed to handle null path");
+  ck_assert_msg(res == FALSE, "Failed to handle null path");
 
   path = "/foo/bar";
   res = vroot_alias_exists(path);
-  fail_unless(res == FALSE, "Expected FALSE for path '%s', got TRUE", path);
+  ck_assert_msg(res == FALSE, "Expected FALSE for path '%s', got TRUE", path);
 }
 END_TEST
 
@@ -90,19 +90,19 @@ START_TEST (alias_add_test) {
   const char *dst, *src;
 
   res = vroot_alias_add(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null dst");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null dst");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   dst = "foo";
   res = vroot_alias_add(dst, NULL);
-  fail_unless(res < 0, "Failed to handle null src");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null src");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   src = "bar";
   res = vroot_alias_add(dst, src);
-  fail_unless(res == 0, "Failed to add alias '%s => %s': %s", src, dst,
+  ck_assert_msg(res == 0, "Failed to add alias '%s => %s': %s", src, dst,
     strerror(errno));
 }
 END_TEST
@@ -111,15 +111,15 @@ START_TEST (alias_get_test) {
   const char *alias, *path;
 
   alias = vroot_alias_get(NULL);
-  fail_unless(alias == NULL, "Failed to handle null path");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(alias == NULL, "Failed to handle null path");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 
   path = "/foo/bar";
   alias = vroot_alias_get(path);
-  fail_unless(alias == NULL, "Expected null for path '%s', got '%s'", path,
+  ck_assert_msg(alias == NULL, "Expected null for path '%s', got '%s'", path,
     alias);
-  fail_unless(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
+  ck_assert_msg(errno == ENOENT, "Expected ENOENT (%d), got %s (%d)", ENOENT,
     strerror(errno), errno);
 }
 END_TEST
@@ -128,8 +128,8 @@ START_TEST (alias_do_test) {
   int res;
 
   res = vroot_alias_do(NULL, NULL);
-  fail_unless(res < 0, "Failed to handle null callback");
-  fail_unless(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
+  ck_assert_msg(res < 0, "Failed to handle null callback");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got %s (%d)", EINVAL,
     strerror(errno), errno);
 }
 END_TEST
