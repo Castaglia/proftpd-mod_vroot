@@ -3,6 +3,7 @@ Makefile
 config.status
 autom4te.cache
 mod_vroot.h
+t/api-tests
 .libs
 .*.swp
 *.la

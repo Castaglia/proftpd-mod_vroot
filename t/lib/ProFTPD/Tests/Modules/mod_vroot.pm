@@ -458,6 +458,7 @@ sub vroot_engine {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -719,6 +720,7 @@ sub vroot_anon {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -1015,6 +1017,7 @@ sub vroot_anon_limit_write_allow_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -1172,6 +1175,7 @@ sub vroot_symlink {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -1320,6 +1324,7 @@ sub vroot_symlink_eloop {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -1468,6 +1473,7 @@ sub vroot_opt_allow_symlinks_file {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -1642,6 +1648,7 @@ sub vroot_opt_allow_symlinks_dir_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -1846,6 +1853,7 @@ sub vroot_opt_allow_symlinks_dir_stor_no_overwrite {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -2017,6 +2025,8 @@ sub vroot_opt_allow_symlinks_dir_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     AllowOverwrite => 'on',
 
     IfModules => {
@@ -2219,6 +2229,7 @@ sub vroot_opt_allow_symlinks_dir_cwd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -2431,6 +2442,7 @@ sub vroot_dir_mkd {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     Directory => {
       # BUG: This should be $sub_dir.  But due to how mod_vroot currently
@@ -2540,12 +2552,12 @@ sub vroot_dir_mkd {
       $self->assert($have_smkdir_line,
         test_msg("Did not find expected 'fsio' channel TraceLog line in $setup->{log_file}"));
 
-      if ($line =~ /UID (\d+)/) {
+      if ($line =~ /UID (\S+),/) {
         my $smkdir_uid = $1;
 
         if ($< == 0) {
-          $self->assert($smkdir_uid == 0,
-            test_msg("Expected UID 0, got $smkdir_uid"));
+          $self->assert($smkdir_uid == 0 || $smkdir_uid == -1,
+            test_msg("Expected UID 0 or -1, got $smkdir_uid"));
         }
 
       } else {
@@ -2612,6 +2624,7 @@ sub vroot_server_root {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -2858,6 +2871,7 @@ sub vroot_server_root_mkd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -3025,6 +3039,7 @@ sub vroot_alias_file_list {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -3218,6 +3233,7 @@ sub vroot_alias_file_list_multi {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => [
@@ -3377,6 +3393,7 @@ sub vroot_alias_file_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -3482,6 +3499,7 @@ sub vroot_alias_file_stor_no_overwrite {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -3584,6 +3602,7 @@ sub vroot_alias_file_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     AllowOverwrite => 'on',
 
@@ -3726,6 +3745,7 @@ sub vroot_alias_file_dele {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -3874,6 +3894,7 @@ sub vroot_alias_file_mlsd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -4021,6 +4042,7 @@ sub vroot_alias_file_mlst {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -4162,6 +4184,7 @@ sub vroot_alias_dup_same_name {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -4348,6 +4371,7 @@ sub vroot_alias_dup_colliding_aliases {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => [
@@ -4536,6 +4560,7 @@ sub vroot_alias_delete_source {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -4724,6 +4749,7 @@ sub vroot_alias_no_source {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -4901,6 +4927,7 @@ sub vroot_alias_dir_list_no_trailing_slash {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -5080,6 +5107,7 @@ sub vroot_alias_dir_list_with_trailing_slash {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -5283,6 +5311,7 @@ sub vroot_alias_dir_list_from_above {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -5481,6 +5510,7 @@ sub vroot_alias_dir_cwd_list {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -5644,6 +5674,7 @@ sub vroot_alias_dir_cwd_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -5805,6 +5836,7 @@ sub vroot_alias_dir_cwd_cdup {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -5975,6 +6007,7 @@ sub vroot_alias_dir_mkd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -6114,6 +6147,7 @@ sub vroot_alias_dir_rmd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -6277,6 +6311,7 @@ sub vroot_alias_dir_cwd_mlsd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -6477,6 +6512,7 @@ sub vroot_alias_dir_mlsd_from_above {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -6669,6 +6705,7 @@ sub vroot_alias_dir_outside_root_cwd_mlsd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -6884,6 +6921,7 @@ sub vroot_alias_dir_outside_root_cwd_mlsd_cwd_ls {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -7091,6 +7129,7 @@ sub vroot_alias_dir_mlst {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -7196,6 +7235,7 @@ sub vroot_alias_dir_list_multi_issue22 {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => [
@@ -7401,6 +7441,7 @@ sub vroot_alias_dir_mlsd_multi_issue22 {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => [
@@ -7605,6 +7646,7 @@ sub vroot_alias_symlink_list {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -7773,6 +7815,7 @@ sub vroot_alias_symlink_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -7895,6 +7938,7 @@ sub vroot_alias_symlink_stor_no_overwrite {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -8016,6 +8060,7 @@ sub vroot_alias_symlink_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     AllowOverwrite => 'on',
 
@@ -8173,6 +8218,7 @@ sub vroot_alias_symlink_mlsd {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -8336,6 +8382,7 @@ sub vroot_alias_symlink_mlst {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -8479,6 +8526,7 @@ sub vroot_alias_ifuser {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -8683,6 +8731,7 @@ sub vroot_alias_ifgroup {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -8888,6 +8937,7 @@ sub vroot_alias_ifgroup_list_stor {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -9161,6 +9211,7 @@ sub vroot_alias_ifclass {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -9374,6 +9425,7 @@ sub vroot_showsymlinks_on {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     # ShowSymlinks is on by default, but explicitly list it here for
     # completeness
@@ -9549,6 +9601,7 @@ sub vroot_hiddenstores_on_double_dot {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     AllowOverwrite => 'on',
     HiddenStores => 'on',
@@ -9654,6 +9707,7 @@ sub vroot_mfmt {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -9772,6 +9826,7 @@ sub vroot_log_extlog_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     LogFormat => 'custom "%f"',
     ExtendedLog => "$ext_log READ custom",
@@ -9927,6 +9982,7 @@ sub vroot_log_extlog_stor {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     LogFormat => 'custom "%f"',
     ExtendedLog => "$ext_log WRITE custom",
@@ -10052,6 +10108,7 @@ sub vroot_log_xferlog_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     TransferLog => $xfer_log,
 
@@ -10239,6 +10296,7 @@ sub vroot_log_xferlog_stor {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     TransferLog => $xfer_log,
 
@@ -10418,6 +10476,7 @@ sub vroot_config_limit_write {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -10571,6 +10630,7 @@ sub vroot_config_deleteabortedstores_conn_aborted {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     HiddenStores => 'on',
     DeleteAbortedStores => 'on',
@@ -10691,6 +10751,7 @@ sub vroot_config_deleteabortedstores_cmd_aborted {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     HiddenStores => 'on',
     DeleteAbortedStores => 'on',
@@ -10851,6 +10912,7 @@ sub vroot_alias_var_u_file {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -11043,6 +11105,7 @@ sub vroot_alias_var_u_dir {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -11204,6 +11267,7 @@ sub vroot_alias_var_u_dir_with_stor_mff {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_vroot.c' => {
@@ -11436,6 +11500,8 @@ sub vroot_alias_var_u_symlink_dir {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ShowSymlinks => 'off',
 
     IfModules => {
@@ -11578,29 +11644,13 @@ sub vroot_alias_var_u_symlink_dir {
 sub vroot_alias_bad_src_dst_check_bug4 {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = test_get_logfile();
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $group = 'ftpd';
-  my $home_dir = File::Spec->rel2abs("$tmpdir/$user");
-  mkpath($home_dir);
-  my $uid = 500;
-  my $gid = 500;
+  my $setup = test_setup($tmpdir, 'vroot');
 
   # In order for the real /tmp/vroot.d directory to be visible, via
   # VRootAlias, within the vroot, the leading /tmp directory needs to
   # actually exist with the vroot.  In other words, the path needs to be
   # real, even if the leaf is virtual.
-  my $user_tmpdir = File::Spec->rel2abs("$home_dir/tmp");
+  my $user_tmpdir = File::Spec->rel2abs("$setup->{home_dir}/tmp");
   mkpath($user_tmpdir);
 
   my $test_dir = File::Spec->rel2abs("/tmp/vroot.d");
@@ -11617,34 +11667,32 @@ sub vroot_alias_bad_src_dst_check_bug4 {
   # Make sure that, if we're running as root, that the home directory has
   # permissions/privs set for the account we create
   if ($< == 0) {
-    unless (chmod(0755, $home_dir, $user_tmpdir, $test_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
+    unless (chmod(0755, $user_tmpdir, $test_dir)) {
+      die("Can't set perms on $user_tmpdir to 0755: $!");
     }
 
-    unless (chown($uid, $gid, $home_dir, $user_tmpdir, $test_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
+    unless (chown($setup->{uid}, $setup->{gid}, $user_tmpdir, $test_dir)) {
+      die("Can't set owner of $user_tmpdir to $setup->{uid}/$setup->{gid}: $!");
     }
   }
 
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, $group, $gid, $user);
-
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
     Trace => 'fsio:20 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ShowSymlinks => 'off',
 
     IfModules => {
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         DefaultRoot => '~',
 
         VRootAlias => "$test_dir ~/tmp/vroot.d",
@@ -11656,7 +11704,8 @@ sub vroot_alias_bad_src_dst_check_bug4 {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -11673,20 +11722,21 @@ sub vroot_alias_bad_src_dst_check_bug4 {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
+      # Allow for server startup
+      sleep(1);
+
       my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
-      $client->login($user, $passwd);
+      $client->login($setup->{user}, $setup->{passwd});
 
       my ($resp_code, $resp_msg) = $client->pwd();
 
-      my $expected;
-
-      $expected = 257;
+      my $expected = 257;
       $self->assert($expected == $resp_code,
-        test_msg("Expected $expected, got $resp_code"));
+        test_msg("Expected response code $expected, got $resp_code"));
 
       $expected = "\"/\" is the current directory";
       $self->assert($expected eq $resp_msg,
-        test_msg("Expected '$expected', got '$resp_msg'"));
+        test_msg("Expected response message '$expected', got '$resp_msg'"));
 
       $client->cwd('/tmp/vroot.d');
 
@@ -11699,6 +11749,10 @@ sub vroot_alias_bad_src_dst_check_bug4 {
       my $buf;
       $conn->read($buf, 8192, 5);
       eval { $conn->close() };
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# response:\n$buf\n";
+      }
 
       # We have to be careful of the fact that readdir returns directory
       # entries in an unordered fashion.
@@ -11738,7 +11792,6 @@ sub vroot_alias_bad_src_dst_check_bug4 {
 
       $client->quit();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -11747,7 +11800,7 @@ sub vroot_alias_bad_src_dst_check_bug4 {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -11757,18 +11810,10 @@ sub vroot_alias_bad_src_dst_check_bug4 {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    test_append_logfile($log_file, $ex);
-    unlink($log_file);
-
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub vroot_alias_bad_alias_dirscan_bug5 {
@@ -11801,6 +11846,8 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     ShowSymlinks => 'off',
 
     IfModules => {
@@ -11984,6 +12031,8 @@ sub vroot_alias_enametoolong_bug59 {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
+
     ShowSymlinks => 'off',
 
     IfModules => {

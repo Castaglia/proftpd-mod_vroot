@@ -50,6 +50,9 @@ static void tear_down(void) {
   } 
 }
 
+/* TODO: Fill in these FSIO API tests, once the Path API unit tests are
+ * fleshed out more completely, as the FSIO API heavily relies on the Path API.
+ */
 START_TEST (fsio_stat_test) {
 }
 END_TEST
