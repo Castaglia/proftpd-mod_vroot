@@ -355,9 +355,14 @@ my $TESTS = {
     test_class => [qw(bug forking)],
   },
 
-  # See:
-  #  https://github.com/proftpd/proftpd/issues/59
+  # See:  https://github.com/proftpd/proftpd/issues/59
   vroot_alias_enametoolong_bug59 => {
+    order => ++$order,
+    test_class => [qw(bug forking)],
+  },
+
+  # See: https://github.com/proftpd/proftpd/issues/1491
+  vroot_root_paths_hidden_issue1491 => {
     order => ++$order,
     test_class => [qw(bug forking)],
   },
@@ -12159,6 +12164,204 @@ sub vroot_alias_enametoolong_bug59 {
   }
 
   unlink($log_file);
+}
+
+sub vroot_root_paths_hidden_issue1491 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  # Note: the actual reproduction recipe for this issue requires the use
+  # of a single-component root, e.g. "/store".  However, I use the
+  # normal automatically generated temporary directory (of multiple path
+  # components) here, for the rest of the machinery; the `use_opt` variable
+  # can be used in the future to run this test using the short `/opt` directory
+  # as the DefaultRoot.  Doing so require that that `/opt` directory be
+  # created (and populated!) manually.
+
+  my $use_opt = 0;
+
+  my $root_dir;
+
+  if ($use_opt) {
+    $root_dir = File::Spec->rel2abs('/opt');
+
+  } else {
+    $root_dir = File::Spec->rel2abs("$tmpdir/opt");
+    mkpath($root_dir);
+
+    my $root_files = [qw(
+      not-opt
+      opt
+      optagain
+      opttest
+    )];
+
+    foreach my $root_file (@$root_files) {
+      my $path = File::Spec->rel2abs("$root_dir/$root_file");
+      next if -f $path;
+
+      if (open(my $fh, "> $path")) {
+        close($fh);
+
+      } else {
+        die("Can't open $path: $!");
+      }
+    }
+
+    if ($< == 0) {
+      unless (chmod(0755, $root_dir)) {
+        die("Can't set perms on $root_dir to 0755: $!");
+      }
+
+      unless (chown($setup->{uid}, $setup->{gid}, $root_dir)) {
+        die("Can't set owner of $root_dir to $setup->{uid}/$setup->{gid}: $!");
+      }
+    }
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:20 vroot:20 vroot.path:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    ShowSymlinks => 'off',
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $setup->{log_file},
+        DefaultRoot => $root_dir,
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Allow for server startup
+      sleep(1);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($setup->{user}, $setup->{passwd});
+
+      my $conn = $client->list_raw();
+      unless ($conn) {
+        die("Failed to LIST: " . $client->response_code() . " " .
+          $client->response_msg());
+      }
+
+      my $buf;
+      $conn->read($buf, 8192, 30);
+      eval { $conn->close() };
+
+      my $resp_code = $client->response_code();
+      my $resp_msg = $client->response_msg();
+      $self->assert_transfer_ok($resp_code, $resp_msg);
+
+      $client->quit();
+
+      if ($ENV{TEST_VERBOSE}) {
+        print STDERR "# data:\n$buf\n";
+      }
+
+      # We have to be careful of the fact that readdir returns directory
+      # entries in an unordered fashion.
+      my $res = {};
+      my $lines = [split(/\n/, $buf)];
+      foreach my $line (@$lines) {
+        if ($line =~ /^\S+\s+\d+\s+\S+\s+\S+\s+.*?\s+(\S+)$/) {
+          $res->{$1} = 1;
+        }
+      }
+
+      unless (scalar(keys(%$res)) > 0) {
+        die("LIST data unexpectedly empty");
+      }
+
+      my $expected = {
+        'not-opt' => 1,
+        'opt' => 1,
+        'optagain' => 1,
+        'opttest' => 1,
+      };
+
+      my $ok = 1;
+      my $mismatch;
+      foreach my $name (keys(%$res)) {
+        unless (defined($expected->{$name})) {
+          $mismatch = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$mismatch' appeared in LIST data")
+      }
+
+      $ok = 1;
+
+      my $missing;
+      foreach my $name (keys(%$expected)) {
+        unless (defined($res->{$name})) {
+          $missing = $name;
+          $ok = 0;
+          last;
+        }
+      }
+
+      unless ($ok) {
+        die("Unexpected name '$missing' missing from LIST data")
+      }
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 1;
