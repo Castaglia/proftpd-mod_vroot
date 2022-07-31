@@ -272,6 +272,7 @@ sub vroot_alias_file_sftp_read {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -413,6 +414,7 @@ sub vroot_alias_file_sftp_write_no_overwrite {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -538,6 +540,7 @@ sub vroot_alias_file_sftp_write {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     AllowOverwrite => 'on',
 
@@ -707,6 +710,7 @@ sub vroot_alias_file_sftp_stat {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -885,6 +889,7 @@ sub vroot_alias_file_sftp_lstat {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -1063,6 +1068,7 @@ sub vroot_alias_file_sftp_realpath {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -1232,6 +1238,7 @@ sub vroot_alias_file_sftp_remove {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -1416,6 +1423,7 @@ sub vroot_alias_dir_sftp_readdir {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -1618,6 +1626,7 @@ sub vroot_alias_dir_sftp_rmdir {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -1801,6 +1810,7 @@ sub vroot_alias_symlink_sftp_stat {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -1995,6 +2005,7 @@ sub vroot_alias_symlink_sftp_lstat {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -2189,6 +2200,7 @@ sub vroot_alias_symlink_sftp_realpath {
 
     AuthUserFile => $auth_user_file,
     AuthGroupFile => $auth_group_file,
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -2320,6 +2332,7 @@ sub vroot_alias_file_scp_download {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
@@ -2439,6 +2452,8 @@ sub vroot_alias_file_scp_upload {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
     AllowOverwrite => 'on',
 
     IfModules => {
@@ -2562,6 +2577,7 @@ sub vroot_sftp_log_extlog_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     LogFormat => 'custom "%f"',
     ExtendedLog => "$ext_log READ custom",
@@ -2725,6 +2741,7 @@ sub vroot_sftp_log_xferlog_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     TransferLog => $xfer_log,
 
@@ -2906,6 +2923,7 @@ sub vroot_sftp_log_extlog_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     LogFormat => 'custom "%f"',
     ExtendedLog => "$ext_log WRITE custom",
@@ -3053,6 +3071,7 @@ sub vroot_sftp_log_xferlog_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     TransferLog => $xfer_log,
 
@@ -3238,6 +3257,7 @@ sub vroot_scp_log_extlog_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     LogFormat => 'custom "%f"',
     ExtendedLog => "$ext_log READ custom",
@@ -3382,6 +3402,7 @@ sub vroot_scp_log_xferlog_retr {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     TransferLog => $xfer_log,
 
@@ -3544,6 +3565,7 @@ sub vroot_scp_log_extlog_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     LogFormat => 'custom "%f"',
     ExtendedLog => "$ext_log WRITE custom",
@@ -3678,6 +3700,7 @@ sub vroot_scp_log_xferlog_stor {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     TransferLog => $xfer_log,
 
@@ -3870,6 +3893,7 @@ sub vroot_alias_dir_sftp_publickey_issue30 {
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [

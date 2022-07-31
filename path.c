@@ -1,6 +1,6 @@
 /*
  * ProFTPD: mod_vroot Path API
- * Copyright (c) 2016 TJ Saunders
+ * Copyright (c) 2016-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -69,18 +69,25 @@ const char *vroot_path_get_base(pool *p, size_t *baselen) {
 }
 
 int vroot_path_set_base(const char *base, size_t baselen) {
-  if (base == NULL) {
+  if (base == NULL ||
+      baselen >= sizeof(vroot_base)) {
     errno = EINVAL;
     return -1;
   }
 
   memset(vroot_base, '\0', sizeof(vroot_base));
-  memcpy(vroot_base, base, sizeof(vroot_base)-1);
+  if (baselen > 0) {
+    memcpy(vroot_base, base, baselen);
+    vroot_base[sizeof(vroot_base)-1] = '\0';
+  }
   vroot_baselen = baselen;
 
   return 0;
 }
 
+/* Note that we do in-place modifications of the given `path` buffer here,
+ * which means that it MUST be writable; no constant strings, please.
+ */
 void vroot_path_clean(char *path) {
   char *ptr = NULL;
 
@@ -91,17 +98,23 @@ void vroot_path_clean(char *path) {
 
   ptr = strstr(path, "//");
   while (ptr != NULL) {
+    pr_signals_handle();
+
     strmove(ptr, ptr + 1);
     ptr = strstr(path, "//");
   }
 
   ptr = strstr(path, "/./");
   while (ptr != NULL) {
+    pr_signals_handle();
+
     strmove(ptr, ptr + 2);
     ptr = strstr(path, "/./");
   }
 
   while (strncmp(path, "../", 3) == 0) {
+    pr_signals_handle();
+
     path += 3;
   }
 
@@ -109,6 +122,8 @@ void vroot_path_clean(char *path) {
   if (ptr != NULL) {
     if (ptr == path) {
       while (strncmp(path, "/../", 4) == 0) {
+        pr_signals_handle();
+
         strmove(path, path + 3);
       }
 
@@ -116,7 +131,11 @@ void vroot_path_clean(char *path) {
     }
 
     while (ptr != NULL) {
-      char *next_elem = ptr + 4;
+      char *next_elem;
+
+      pr_signals_handle();
+
+      next_elem = ptr + 4;
 
       if (ptr != path &&
           *ptr == '/') {
@@ -197,14 +216,16 @@ char *vroot_realpath(pool *p, const char *path, int flags) {
   char *real_path = NULL;
   size_t real_pathlen;
 
-  if (flags & VROOT_REALPATH_FL_ABS_PATH) {
-    /* If not an absolute path, prepend the current location. */
-    if (*path != '/') {
-      real_path = pdircat(p, pr_fs_getvwd(), path, NULL);
+  if (p == NULL ||
+      path == NULL) {
+    errno = EINVAL;
+    return NULL;
+  }
 
-    } else {
-      real_path = pstrdup(p, path);
-    }
+  /* If not an absolute path, prepend the current location. */
+  if (*path != '/' &&
+      (flags & VROOT_REALPATH_FL_ABS_PATH)) {
+    real_path = pdircat(p, pr_fs_getvwd(), path, NULL);
 
   } else {
     real_path = pstrdup(p, path);
@@ -228,6 +249,11 @@ char *vroot_realpath(pool *p, const char *path, int flags) {
 int vroot_path_lookup(pool *p, char *path, size_t pathlen, const char *dir,
     int flags, char **alias_path) {
   char buf[PR_TUNABLE_PATH_MAX + 1], *bufp = NULL;
+
+  if (dir == NULL) {
+    errno = EINVAL;
+    return -1;
+  }
 
   memset(buf, '\0', sizeof(buf));
   memset(path, '\0', pathlen);
