@@ -211,34 +211,181 @@ END_TEST
 
 START_TEST (path_lookup_test) {
   int res;
-  char *path;
-  size_t pathlen;
-  const char *dir;
+  char *vpath = NULL;
+  size_t vpathsz = 1024;
+  const char *path;
 
   mark_point();
-  path = pstrdup(p, "/foo");
-  pathlen = strlen(path);
-  res = vroot_path_lookup(p, path, pathlen, NULL, 0, NULL);
-  ck_assert_msg(res < 0, "Failed to handle null dir");
+  vpath = pcalloc(p, vpathsz);
+  res = vroot_path_lookup(p, vpath, vpathsz, NULL, 0, NULL);
+  ck_assert_msg(res < 0, "Failed to handle null path");
   ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
     strerror(errno), errno);
 
   mark_point();
-  dir = "/";
-  res = vroot_path_lookup(NULL, NULL, 0, dir, 0, NULL);
-  ck_assert_msg(res >= 0, "Failed to handle null pool, path: %s",
+  path = "/";
+  res = vroot_path_lookup(NULL, NULL, 0, path, 0, NULL);
+  ck_assert_msg(res < 0, "Failed to handle null vpath");
+  ck_assert_msg(errno == EINVAL, "Expected EINVAL (%d), got '%s' (%d)", EINVAL,
+    strerror(errno), errno);
+
+  mark_point();
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
     strerror(errno));
 
   mark_point();
-  res = vroot_path_lookup(p, path, pathlen, dir, 0, NULL);
-  ck_assert_msg(res >= 0, "Failed to lookup path '%s': %s", path,
+  path = ".";
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
     strerror(errno));
+}
+END_TEST
+
+/* See: https://github.com/proftpd/proftpd/issues/1491 */
+START_TEST (path_lookup_issue1491_test) {
+  int res;
+  char *vpath = NULL;
+  size_t vpathsz = 1024, baselen;
+  const char *base, *path, *expected;
+
+  vpath = pcalloc(p, vpathsz);
+  base = "/store";
+  baselen = strlen(base);
+
+  /* Set the base. */
+  mark_point();
+  res = vroot_path_set_base(base, baselen);
+  ck_assert_msg(res == 0, "Failed to set base '%s': %s", base, strerror(errno));
+
+  /* Start with an absolute path that matches the base. */
+  mark_point();
+  path = base;
+
+  /* NOTE: Yes, this is a surprising expectation; it has to do with the
+   * necessary fixes for Issue #1491.  Sigh.
+   */
+  expected = "/store/store";
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
+    strerror(errno));
+  ck_assert_msg(strcmp(vpath, expected) == 0, "Expected '%s', got '%s'",
+    expected, vpath);
+
+  /* Then try a relative path whose name matches the base, sans the leading
+   * path delimiter.
+   */
+  mark_point();
+  path = "store";
+  expected = base;
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
+    strerror(errno));
+  ck_assert_msg(strcmp(vpath, expected) == 0, "Expected '%s', got '%s'",
+    expected, vpath);
+
+  /* Next, try a relative path for a file whose name starts with that of
+   * the base.
+   */
+  mark_point();
+  path = "storetest";
+  expected = "/storetest";
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
+    strerror(errno));
+  ck_assert_msg(strcmp(vpath, expected) == 0, "Expected '%s', got '%s'",
+    expected, vpath);
+
+  /* Next, use an absolute path for a file whose name starts with that of the
+   * base; this appears to be the root of Issue #1491.
+   */
+  mark_point();
+  path = "/storetest";
+
+  /* NOTE: Yes, this is a surprising expectation; it has to do with the
+   * necessary fixes for Issue #1491.  Sigh.
+   */
+  expected = "/store/storetest";
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
+    strerror(errno));
+  ck_assert_msg(strcmp(vpath, expected) == 0, "Expected '%s', got '%s'",
+    expected, vpath);
+
+  /* Set the new base. */
+  base = "/store/store";
+  baselen = strlen(base);
 
   mark_point();
-  dir = ".";
-  res = vroot_path_lookup(p, path, pathlen, dir, 0, NULL);
-  ck_assert_msg(res >= 0, "Failed to lookup path '%s': %s", path,
+  res = vroot_path_set_base(base, baselen);
+  ck_assert_msg(res == 0, "Failed to set base '%s': %s", base, strerror(errno));
+
+  /* Start with an absolute path that matches the base. */
+  mark_point();
+  path = base;
+
+  /* NOTE: Yes, this is a surprising expectation; it has to do with the
+   * necessary fixes for Issue #1491.  Sigh.  This is starting to look a little
+   * ridiculous.
+   */
+  expected = "/store/store/store/store";
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
     strerror(errno));
+  ck_assert_msg(strcmp(vpath, expected) == 0, "Expected '%s', got '%s'",
+    expected, vpath);
+
+  /* Then try a relative path whose name matches the base, sans the leading
+   * path delimiter.
+   */
+  mark_point();
+  path = "store";
+  expected = "/store";
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
+    strerror(errno));
+  ck_assert_msg(strcmp(vpath, expected) == 0, "Expected '%s', got '%s'",
+    expected, vpath);
+
+  /* Next, try a relative path for a file whose name starts with that of
+   * the base.
+   */
+  mark_point();
+  path = "storetest";
+  expected = "/storetest";
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
+    strerror(errno));
+  ck_assert_msg(strcmp(vpath, expected) == 0, "Expected '%s', got '%s'",
+    expected, vpath);
+
+  /* Next, use an absolute path for a file whose name starts with that of the
+   * base; this appears to be the root of Issue #1491.
+   */
+  mark_point();
+  path = "/storetest";
+
+  /* NOTE: Yes, this is a surprising expectation; it has to do with the
+   * necessary fixes for Issue #1491.  Sigh.
+   */
+  expected = "/store/store/storetest";
+  res = vroot_path_lookup(p, vpath, vpathsz, path, 0, NULL);
+  ck_assert_msg(res >= 0, "Failed to lookup vpath for '%s': %s", path,
+    strerror(errno));
+  ck_assert_msg(strcmp(vpath, expected) == 0, "Expected '%s', got '%s'",
+    expected, vpath);
+
+  /* Clear the base, using an empty string. */
+  mark_point();
+  path = "";
+  res = vroot_path_set_base(path, 0);
+  ck_assert_msg(res == 0, "Failed to set empty path as base: %s",
+    strerror(errno));
+}
+END_TEST
+
+/* TODO */
+START_TEST (path_lookup_with_alias_test) {
 }
 END_TEST
 
@@ -257,6 +404,8 @@ Suite *tests_get_path_suite(void) {
   tcase_add_test(testcase, path_clean_test);
   tcase_add_test(testcase, realpath_test);
   tcase_add_test(testcase, path_lookup_test);
+  tcase_add_test(testcase, path_lookup_issue1491_test);
+  tcase_add_test(testcase, path_lookup_with_alias_test);
 
   suite_add_tcase(suite, testcase);
   return suite;

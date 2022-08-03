@@ -246,23 +246,31 @@ char *vroot_realpath(pool *p, const char *path, int flags) {
   return real_path;
 }
 
-int vroot_path_lookup(pool *p, char *path, size_t pathlen, const char *dir,
+/* The given `vpath` buffer is the looked-up path for the given `path`. */
+int vroot_path_lookup(pool *p, char *vpath, size_t vpathsz, const char *path,
     int flags, char **alias_path) {
   char buf[PR_TUNABLE_PATH_MAX + 1], *bufp = NULL;
+  const char *cwd;
 
-  if (dir == NULL) {
+  if (vpath == NULL ||
+      path == NULL) {
     errno = EINVAL;
     return -1;
   }
 
   memset(buf, '\0', sizeof(buf));
-  memset(path, '\0', pathlen);
+  if (vpath != NULL &&
+      vpathsz > 0) {
+    memset(vpath, '\0', vpathsz);
+  }
 
-  if (strcmp(dir, ".") != 0) {
-    sstrncpy(buf, dir, sizeof(buf));
+  cwd = pr_fs_getcwd();
+
+  if (strcmp(path, ".") != 0) {
+    sstrncpy(buf, path, sizeof(buf));
 
   } else {
-    sstrncpy(buf, pr_fs_getcwd(), sizeof(buf));
+    sstrncpy(buf, cwd, sizeof(buf));
   }
 
   vroot_path_clean(buf);
@@ -270,7 +278,17 @@ int vroot_path_lookup(pool *p, char *path, size_t pathlen, const char *dir,
   bufp = buf;
 
   if (strncmp(bufp, vroot_base, vroot_baselen) == 0) {
-    bufp += vroot_baselen;
+    size_t len;
+
+    /* Attempt to handle cases like "/base/base" and "/base/basefoo", where
+     * the base is just "/base".
+     * See https://github.com/proftpd/proftpd/issues/1491
+     */
+    len = strlen(bufp);
+    if (len > vroot_baselen &&
+        bufp[vroot_baselen] == '/') {
+      bufp += vroot_baselen;
+    }
   }
 
 loop:
@@ -280,19 +298,19 @@ loop:
       bufp[1] == '.' &&
       (bufp[2] == '\0' ||
        bufp[2] == '/')) {
-    char *tmp = NULL;
+    char *ptr = NULL;
 
-    tmp = strrchr(path, '/');
-    if (tmp != NULL) {
-      *tmp = '\0';
+    ptr = strrchr(vpath, '/');
+    if (ptr != NULL) {
+      *ptr = '\0';
 
     } else {
-      *path = '\0';
+      *vpath = '\0';
     }
 
-    if (strncmp(path, vroot_base, vroot_baselen) == 0 ||
-         path[vroot_baselen] != '/') {
-      snprintf(path, pathlen, "%s/", vroot_base);
+    if (strncmp(vpath, vroot_base, vroot_baselen) == 0 ||
+         vpath[vroot_baselen] != '/') {
+      snprintf(vpath, vpathsz, "%s/", vroot_base);
     }
 
     if (bufp[0] == '.' &&
@@ -303,7 +321,7 @@ loop:
     }
 
   } else if (*bufp == '/') {
-    snprintf(path, pathlen, "%s/", vroot_base);
+    snprintf(vpath, vpathsz, "%s/", vroot_base);
     bufp += 1;
     goto loop;
 
@@ -345,19 +363,19 @@ loop:
     }
 
     buflen = strlen(bufp) + 1;
-    tmplen = strlen(path);
+    tmplen = strlen(vpath);
 
-    if (tmplen + buflen >= pathlen) {
+    if (tmplen + buflen >= vpathsz) {
       errno = ENAMETOOLONG;
       return -1;
     }
 
-    path[tmplen] = '/';
-    memcpy(path + tmplen + 1, bufp, buflen);
+    vpath[tmplen] = '/';
+    memcpy(vpath + tmplen + 1, bufp, buflen);
   }
 
   /* Clean any unnecessary characters added by the above processing. */
-  vroot_path_clean(path);
+  vroot_path_clean(vpath);
 
   if (!(flags & VROOT_LOOKUP_FL_NO_ALIAS)) {
     int alias_count;
@@ -372,7 +390,7 @@ loop:
        * aliases are found.
        */
       bufp = buf;
-      start_ptr = path;
+      start_ptr = vpath;
 
       while (start_ptr != NULL) {
         char *ptr = NULL;
@@ -402,11 +420,11 @@ loop:
               *alias_path, start_ptr);
           }
 
-          sstrncpy(path, src_path, pathlen);
+          sstrncpy(vpath, src_path, vpathsz);
 
           if (end_ptr != NULL) {
             /* Now tack on our suffix from the scratchpad. */
-            sstrcat(path, bufp, pathlen);
+            sstrcat(vpath, bufp, vpathsz);
           }
 
           break;
@@ -435,5 +453,11 @@ loop:
     }
   }
 
+  /* Note that logging the session.chroot_path here will not help; mod_vroot
+   * deliberately always sets that to just "/".
+   */
+  pr_trace_msg(trace_channel, 19,
+    "lookup: path = '%s', cwd = '%s', base = '%s', vpath = '%s'", path, cwd,
+    vroot_base, vpath);
   return 0;
 }
