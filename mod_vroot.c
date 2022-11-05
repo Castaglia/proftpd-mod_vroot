@@ -1,7 +1,7 @@
 /*
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
- * Copyright (c) 2002-2021 TJ Saunders
+ * Copyright (c) 2002-2022 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -561,16 +561,20 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
 MODRET vroot_post_pass(cmd_rec *cmd) {
   if (vroot_engine == TRUE) {
 
-    /* If not chrooted, unregister vroot. */
+    /* If not chrooted, umount our vroot FS. */
     if (session.chroot_path == NULL) {
-      if (pr_unregister_fs("/") < 0) {
-        pr_log_debug(DEBUG2, MOD_VROOT_VERSION
-          ": error unregistering vroot: %s", strerror(errno));
+      pr_fs_t *fs;
 
-      } else {
-        pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unregistered");
+      fs = pr_unmount_fs("/", "vroot");
+      if (fs != NULL) {
+        destroy_pool(fs->fs_pool);
+        pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unmounted");
         pr_fs_setcwd(pr_fs_getvwd());
         pr_fs_clear_cache();
+
+      } else {
+        pr_log_debug(DEBUG2, MOD_VROOT_VERSION
+          ": error unmounting vroot: %s", strerror(errno));
       }
 
     } else {
@@ -605,10 +609,10 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
 
     /* NOTE: The "mod_sftp.nonfatal-attempt" note was added in 1.3.7b.  So
      * if our version is older than that, we expect this hint to be null,
-     * and need to unregister ourselves.
+     * and need to unmount ourselves.
      *
      * On the other hand, if our version is newer than that, and hint is NOT
-     * null, then we need to unregister ourselves.  Why?  The PRE_CMD PASS
+     * null, then we need to unmount ourselves.  Why?  The PRE_CMD PASS
      * handler will re-register this FS at that time.
      */
 
@@ -617,8 +621,10 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
 #else
     if (hint != NULL) {
 #endif /* ProFTPD 1.3.7b or later */
-      /* If not chrooted, unregister vroot. */
+      /* If not chrooted, unmount our vroot FS. */
       if (session.chroot_path == NULL) {
+        pr_fs_t *fs;
+
         /* Due to interactions with mod_auth_file and mod_ifsession, it is
          * possible for AuthUserFile/AuthGroupFile to currently be opened with
          * pr_fh_t from the vroot FSIO, as from previous authentication
@@ -630,12 +636,14 @@ MODRET vroot_post_pass_err(cmd_rec *cmd) {
         pr_auth_endpwent(cmd->tmp_pool);
         pr_auth_endgrent(cmd->tmp_pool);
 
-        if (pr_unregister_fs("/") < 0) {
+        fs = pr_unmount_fs("/", "vroot");
+        if (fs == NULL) {
           pr_log_debug(DEBUG2, MOD_VROOT_VERSION
-            ": error unregistering vroot: %s", strerror(errno));
+            ": error unmounting vroot: %s", strerror(errno));
 
         } else {
-          pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unregistered");
+          destroy_pool(fs->fs_pool);
+          pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unmounted");
         }
       }
     }
