@@ -498,7 +498,49 @@ MODRET vroot_post_mkd(cmd_rec *cmd) {
   return PR_DECLINED(cmd);
 }
 
-MODRET vroot_pre_pass(cmd_rec *cmd) {
+MODRET vroot_post_pass(cmd_rec *cmd) {
+  if (vroot_engine == FALSE) {
+    return PR_DECLINED(cmd);
+  }
+
+  /* If not chrooted, umount our vroot FS. */
+  if (session.chroot_path == NULL) {
+    pr_fs_t *fs;
+
+    fs = pr_unmount_fs("/", "vroot");
+    if (fs != NULL) {
+      destroy_pool(fs->fs_pool);
+      pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unmounted");
+      pr_fs_setcwd(pr_fs_getvwd());
+      pr_fs_clear_cache();
+
+    } else {
+      pr_log_debug(DEBUG2, MOD_VROOT_VERSION
+        ": error unmounting vroot: %s", strerror(errno));
+    }
+
+  } else {
+    config_rec *c;
+
+    /* Otherwise, lookup and process any VRootOptions. */
+    c = find_config(main_server->conf, CONF_PARAM, "VRootOptions", FALSE);
+    if (c != NULL) {
+      vroot_opts = *((unsigned int *) c->argv[0]);
+    }
+
+    /* XXX This needs to be in the PRE_CMD PASS handler, as when
+     * VRootServer is used, so that a real chroot(2) occurs.
+     */
+    handle_vrootaliases();
+  }
+
+  return PR_DECLINED(cmd);
+}
+
+/* Event listeners
+ */
+
+static void vroot_chroot_ev(const void *event_data, void *user_data) {
   pr_fs_t *fs = NULL;
   int *use_vroot = NULL;
 
@@ -506,7 +548,7 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
   if (use_vroot == NULL ||
       *use_vroot == FALSE) {
     vroot_engine = FALSE;
-    return PR_DECLINED(cmd);
+    return;
   }
 
   /* First, make sure that we have not already registered our FS object. */
@@ -519,7 +561,7 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
   if (fs == NULL) {
     pr_log_debug(DEBUG3, MOD_VROOT_VERSION ": error registering fs: %s",
       strerror(errno));
-    return PR_DECLINED(cmd);
+    return;
   }
 
   pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot registered");
@@ -555,105 +597,7 @@ MODRET vroot_pre_pass(cmd_rec *cmd) {
   fs->rmdir = vroot_fsio_rmdir;
 
   vroot_engine = TRUE;
-  return PR_DECLINED(cmd);
 }
-
-MODRET vroot_post_pass(cmd_rec *cmd) {
-  if (vroot_engine == TRUE) {
-
-    /* If not chrooted, umount our vroot FS. */
-    if (session.chroot_path == NULL) {
-      pr_fs_t *fs;
-
-      fs = pr_unmount_fs("/", "vroot");
-      if (fs != NULL) {
-        destroy_pool(fs->fs_pool);
-        pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unmounted");
-        pr_fs_setcwd(pr_fs_getvwd());
-        pr_fs_clear_cache();
-
-      } else {
-        pr_log_debug(DEBUG2, MOD_VROOT_VERSION
-          ": error unmounting vroot: %s", strerror(errno));
-      }
-
-    } else {
-      config_rec *c;
-
-      /* Otherwise, lookup and process any VRootOptions. */
-      c = find_config(main_server->conf, CONF_PARAM, "VRootOptions", FALSE);
-      if (c != NULL) {
-        vroot_opts = *((unsigned int *) c->argv[0]);
-      }
-
-      /* XXX This needs to be in the PRE_CMD PASS handler, as when
-       * VRootServer is used, so that a real chroot(2) occurs.
-       */
-      handle_vrootaliases();
-    }
-  }
-
-  return PR_DECLINED(cmd);
-}
-
-MODRET vroot_post_pass_err(cmd_rec *cmd) {
-  if (vroot_engine == TRUE) {
-    const void *hint;
-    
-    /* Look for any notes/hints attached to this command which might indicate
-     * that it is not a real PASS command error, but rather a fake command
-     * dispatched for e.g. logging/handling by other modules.  We pay attention
-     * to this here due to e.g. AIX loginfailed(3) semantics (Issue #693).
-     */
-    hint = pr_table_get(cmd->notes, "mod_sftp.nonfatal-attempt", NULL);
-
-    /* NOTE: The "mod_sftp.nonfatal-attempt" note was added in 1.3.7b.  So
-     * if our version is older than that, we expect this hint to be null,
-     * and need to unmount ourselves.
-     *
-     * On the other hand, if our version is newer than that, and hint is NOT
-     * null, then we need to unmount ourselves.  Why?  The PRE_CMD PASS
-     * handler will re-register this FS at that time.
-     */
-
-#if PROFTPD_VERSION_NUMBER < 0x0001030707
-    if (hint == NULL) {
-#else
-    if (hint != NULL) {
-#endif /* ProFTPD 1.3.7b or later */
-      /* If not chrooted, unmount our vroot FS. */
-      if (session.chroot_path == NULL) {
-        pr_fs_t *fs;
-
-        /* Due to interactions with mod_auth_file and mod_ifsession, it is
-         * possible for AuthUserFile/AuthGroupFile to currently be opened with
-         * pr_fh_t from the vroot FSIO, as from previous authentication
-         * attempts (particularly for SSH logins).  So we try to ensure those
-         * are closed, as the pr_fh_t pool will be issued from the vroot FSIO
-         * pool.  Failure to do so could lead to inexplicable segfaults and or
-         * "attempt to free already freed block" log messages.
-         */
-        pr_auth_endpwent(cmd->tmp_pool);
-        pr_auth_endgrent(cmd->tmp_pool);
-
-        fs = pr_unmount_fs("/", "vroot");
-        if (fs == NULL) {
-          pr_log_debug(DEBUG2, MOD_VROOT_VERSION
-            ": error unmounting vroot: %s", strerror(errno));
-
-        } else {
-          destroy_pool(fs->fs_pool);
-          pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot unmounted");
-        }
-      }
-    }
-  }
-
-  return PR_DECLINED(cmd);
-}
-
-/* Event listeners
- */
 
 static void vroot_exit_ev(const void *event_data, void *user_data) {
   vroot_alias_free();
@@ -704,6 +648,8 @@ static int vroot_sess_init(void) {
 
   vroot_alias_init(session.pool);
   vroot_fsio_init(session.pool);
+
+  pr_event_register(&vroot_module, "core.chroot", vroot_chroot_ev, NULL);
   pr_event_register(&vroot_module, "core.exit", vroot_exit_ev, NULL);
 
   return 0;
@@ -722,9 +668,7 @@ static conftable vroot_conftab[] = {
 };
 
 static cmdtable vroot_cmdtab[] = {
-  { PRE_CMD,		C_PASS,	G_NONE,	vroot_pre_pass, FALSE, FALSE },
   { POST_CMD,		C_PASS,	G_NONE,	vroot_post_pass, FALSE, FALSE },
-  { POST_CMD_ERR,	C_PASS,	G_NONE,	vroot_post_pass_err, FALSE, FALSE },
 
   { PRE_CMD,		C_MKD,	G_NONE,	vroot_pre_mkd, FALSE, FALSE },
   { POST_CMD,		C_MKD,	G_NONE,	vroot_post_mkd, FALSE, FALSE },
