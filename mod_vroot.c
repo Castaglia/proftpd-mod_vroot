@@ -600,8 +600,8 @@ static void vroot_chroot_ev(const void *event_data, void *user_data) {
 }
 
 static void vroot_exit_ev(const void *event_data, void *user_data) {
-  vroot_alias_free();
-  vroot_fsio_free();
+  (void) vroot_alias_free();
+  (void) vroot_fsio_free();
 }
 
 /* Initialization routines

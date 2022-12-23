@@ -4,6 +4,7 @@ proftpd-mod_vroot
 Status
 ------
 [![GitHub Actions CI Status](https://github.com/Castaglia/proftpd-mod_vroot/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Castaglia/proftpd-mod_vroot/actions/workflows/ci.yml)
+[![CodeQL Analysis](https://github.com/Castaglia/proftpd-mod_vroot/actions/workflows/codeql.yml/badge.svg)](https://github.com/Castaglia/proftpd-mod_vroot/actions/workflows/codeql.yml)
 [![License](https://img.shields.io/badge/license-GPL-brightgreen.svg)](https://img.shields.io/badge/license-GPL-brightgreen.svg)
 
 Synopsis
