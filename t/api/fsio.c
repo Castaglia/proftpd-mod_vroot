@@ -47,7 +47,7 @@ static void tear_down(void) {
   if (p) {
     destroy_pool(p);
     p = NULL;
-  } 
+  }
 }
 
 /* TODO: Fill in these FSIO API tests, once the Path API unit tests are

@@ -49,7 +49,7 @@ static void tear_down(void) {
   if (p != NULL) {
     destroy_pool(p);
     p = NULL;
-  } 
+  }
 }
 
 START_TEST (path_have_base_test) {
