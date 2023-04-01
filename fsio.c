@@ -465,7 +465,7 @@ int vroot_fsio_chroot(pr_fs_t *fs, const char *path) {
     /* Now, make sure that the given path is below the configured
      * VRootServerRoot.  If so, then we perform a real chroot to the
      * VRootServerRoot directory, then use vroots from there.
-     */ 
+     */
 
     res = strncmp(path, server_root, strlen(server_root));
 
@@ -626,7 +626,7 @@ int vroot_fsio_utimes(pr_fs_t *fs, const char *utimes_path,
   pr_pool_tag(tmp_pool, "VRoot FSIO utimes pool");
 
   path = vroot_realpath(tmp_pool, utimes_path, VROOT_REALPATH_FL_ABS_PATH);
-  
+
   if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, path, 0, NULL) < 0) {
     xerrno = errno;
 
@@ -834,7 +834,7 @@ void *vroot_fsio_opendir(pr_fs_t *fs, const char *orig_path) {
       /* Since this table will use DIR pointers as keys, we want to override
        * the default hashing and key comparison functions used.
        */
-    
+
       pr_table_ctl(vroot_dirtab, PR_TABLE_CTL_SET_KEY_HASH,
         vroot_dirtab_hash_cb);
       pr_table_ctl(vroot_dirtab, PR_TABLE_CTL_SET_KEY_CMP,

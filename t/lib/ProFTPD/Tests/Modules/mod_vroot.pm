@@ -2577,7 +2577,7 @@ sub vroot_dir_mkd {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex); 
+  test_cleanup($setup->{log_file}, $ex);
 }
 
 sub vroot_server_root {

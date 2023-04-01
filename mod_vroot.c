@@ -228,7 +228,7 @@ MODRET set_vrootserverroot(cmd_rec *cmd) {
   /* Make sure the configured path has a trailing path separater ('/').
    * This is important.
    */
- 
+
   pathlen = strlen(path);
   if (path[pathlen - 1] != '/') {
     c->argv[0] = pstrcat(c->pool, path, "/", NULL);
@@ -544,7 +544,7 @@ static void vroot_chroot_ev(const void *event_data, void *user_data) {
   pr_fs_t *fs = NULL;
   int *use_vroot = NULL;
 
-  use_vroot = get_param_ptr(main_server->conf, "VRootEngine", FALSE); 
+  use_vroot = get_param_ptr(main_server->conf, "VRootEngine", FALSE);
   if (use_vroot == NULL ||
       *use_vroot == FALSE) {
     vroot_engine = FALSE;
