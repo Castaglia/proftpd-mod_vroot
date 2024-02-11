@@ -110,6 +110,11 @@ my $TESTS = {
     test_class => [qw(bug forking mod_sftp sftp)],
   },
 
+  vroot_sftp_quotatab_dir_issue1764 => {
+    order => ++$order,
+    test_class => [qw(bug forking mod_quotatab mod_sftp sftp)],
+  },
+
   vroot_scp_log_extlog_retr => {
     order => ++$order,
     test_class => [qw(bug forking mod_sftp scp)],
@@ -3223,6 +3228,165 @@ sub vroot_sftp_log_xferlog_stor {
   if ($@) {
     $ex = $@;
   }
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub vroot_sftp_quotatab_dir_issue1764 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+
+  # We use this username to align with the user name in the pre-existing
+  # mod_quotatab_file table files.
+  my $user = 'test';
+  my $setup = test_setup($tmpdir, 'vroot', $user);
+
+  my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_sftp/ssh_host_rsa_key");
+  my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_sftp/ssh_host_dsa_key");
+
+  # Make copies of the pre-existing mod_quotatab_file tables for our use.
+  my $src_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_quotatab_file/ftpquota-all-limit.tab");
+  my $dst_file = File::Spec->rel2abs("$tmpdir/ftpquota-limit.tab");
+  if ($^O eq 'darwin') {
+    # MacOSX-specific hack, due to how it handles tmp files
+    $dst_file = ('/private' . $dst_file);
+  }
+
+  unless (copy($src_file, $dst_file)) {
+    die("Can't copy $src_file to $dst_file: $!");
+  }
+
+  $src_file = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/tests/t/etc/modules/mod_quotatab_file/ftpquota-all-tally.tab");
+  $dst_file = File::Spec->rel2abs("$tmpdir/ftpquota-tally.tab");
+  if ($^O eq 'darwin') {
+    # MacOSX-specific hack, due to how it handles tmp files
+    $dst_file = ('/private' . $dst_file);
+  }
+
+  unless (copy($src_file, $dst_file)) {
+    die("Can't copy $src_file to $dst_file: $!");
+  }
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:20 quotatab:20 quotatab.file:20 sftp:20 vroot:30',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_quotatab_file.c' => {
+        QuotaEngine => 'on',
+        QuotaLog => $setup->{log_file},
+        QuotaDefault => 'user false hard 1073741824 0 0 0 0 0',
+        QuotaLimitTable => "file:$tmpdir/ftpquota-limit.tab",
+        QuotaTallyTable => "file:$tmpdir/ftpquota-tally.tab",
+      },
+
+      'mod_sftp.c' => [
+        "SFTPEngine on",
+        "SFTPLog $setup->{log_file}",
+        "SFTPHostKey $rsa_host_key",
+        "SFTPHostKey $dsa_host_key",
+      ],
+
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $setup->{log_file},
+        DefaultRoot => '~',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+  require Net::SSH2;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      my $ssh2 = Net::SSH2->new();
+
+      sleep(1);
+
+      unless ($ssh2->connect('127.0.0.1', $port)) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      unless ($ssh2->auth_password($user, $setup->{passwd})) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $sftp = $ssh2->sftp();
+      unless ($sftp) {
+        my ($err_code, $err_name, $err_str) = $ssh2->error();
+        die("Can't use SFTP on SSH2 server: [$err_name] ($err_code) $err_str");
+      }
+
+      my $test_path = '/testdir';
+
+      my $res = $sftp->mkdir($test_path);
+      unless ($res) {
+        my ($err_code, $err_name) = $sftp->error();
+        die("Can't mkdir $test_path: [$err_name] ($err_code)");
+      }
+
+      $res = $sftp->realpath($test_path);
+      unless ($res) {
+        my ($err_code, $err_name) = $sftp->error();
+        die("Can't get real path for '$test_path': [$err_name] ($err_code)");
+      }
+
+      $res = $sftp->rmdir($test_path);
+      unless ($res) {
+        my ($err_code, $err_name) = $sftp->error();
+        die("Can't rmdir $test_path: [$err_name] ($err_code)");
+      }
+
+      $ssh2->disconnect();
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
 
   test_cleanup($setup->{log_file}, $ex);
 }
