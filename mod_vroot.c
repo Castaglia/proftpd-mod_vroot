@@ -1,7 +1,7 @@
 /*
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
- * Copyright (c) 2002-2022 TJ Saunders
+ * Copyright (c) 2002-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -541,8 +541,8 @@ MODRET vroot_post_pass(cmd_rec *cmd) {
  */
 
 static void vroot_chroot_ev(const void *event_data, void *user_data) {
-  pr_fs_t *fs = NULL;
-  int *use_vroot = NULL;
+  pr_fs_t *curr_fs = NULL, *our_fs = NULL;
+  int match = FALSE, *use_vroot = NULL;
 
   use_vroot = get_param_ptr(main_server->conf, "VRootEngine", FALSE);
   if (use_vroot == NULL ||
@@ -552,13 +552,18 @@ static void vroot_chroot_ev(const void *event_data, void *user_data) {
   }
 
   /* First, make sure that we have not already registered our FS object. */
-  fs = pr_unmount_fs("/", "vroot");
-  if (fs != NULL) {
-    destroy_pool(fs->fs_pool);
+  our_fs = pr_unmount_fs("/", "vroot");
+  if (our_fs != NULL) {
+    destroy_pool(our_fs->fs_pool);
   }
 
-  fs = pr_register_fs(main_server->pool, "vroot", "/");
-  if (fs == NULL) {
+  /* Note that we need to be aware of other modules' FS handlers, such as
+   * mod_facl (see Issue #1780).
+   */
+  curr_fs = pr_get_fs("/", &match);
+
+  our_fs = pr_register_fs(main_server->pool, "vroot", "/");
+  if (our_fs == NULL) {
     pr_log_debug(DEBUG3, MOD_VROOT_VERSION ": error registering fs: %s",
       strerror(errno));
     return;
@@ -566,35 +571,58 @@ static void vroot_chroot_ev(const void *event_data, void *user_data) {
 
   pr_log_debug(DEBUG5, MOD_VROOT_VERSION ": vroot registered");
 
+  if (curr_fs != NULL) {
+    our_fs->fs_name = pstrcat(our_fs->fs_pool, "vroot+", curr_fs->fs_name,
+      NULL);
+
+    /* We provide our own handlers for most FS handlers, but not all.
+     * Make sure to use the handlers of the current FS for the rest.
+     */
+
+    our_fs->fstat = curr_fs->fstat;
+    our_fs->close = curr_fs->close;
+    our_fs->read = curr_fs->read;
+    our_fs->pread = curr_fs->pread;
+    our_fs->write = curr_fs->write;
+    our_fs->pwrite = curr_fs->pwrite;
+    our_fs->lseek = curr_fs->lseek;
+    our_fs->ftruncate = curr_fs->ftruncate;
+    our_fs->fchmod = curr_fs->fchmod;
+    our_fs->fchown = curr_fs->fchown;
+    our_fs->access = curr_fs->access;
+    our_fs->faccess = curr_fs->faccess;
+    our_fs->futimes = curr_fs->futimes;
+  }
+
   /* Add the module's custom FS callbacks here. This module does not
    * provide callbacks for the following (as they are unnecessary):
    * close(), read(), write(), and lseek().
    */
-  fs->stat = vroot_fsio_stat;
-  fs->lstat = vroot_fsio_lstat;
-  fs->rename = vroot_fsio_rename;
-  fs->unlink = vroot_fsio_unlink;
-  fs->open = vroot_fsio_open;
+  our_fs->stat = vroot_fsio_stat;
+  our_fs->lstat = vroot_fsio_lstat;
+  our_fs->rename = vroot_fsio_rename;
+  our_fs->unlink = vroot_fsio_unlink;
+  our_fs->open = vroot_fsio_open;
 #if PROFTPD_VERSION_NUMBER < 0x0001030603
-  fs->creat = vroot_fsio_creat;
+  our_fs->creat = vroot_fsio_creat;
 #endif /* ProFTPD 1.3.6rc2 or earlier */
-  fs->link = vroot_fsio_link;
-  fs->readlink = vroot_fsio_readlink;
-  fs->symlink = vroot_fsio_symlink;
-  fs->truncate = vroot_fsio_truncate;
-  fs->chmod = vroot_fsio_chmod;
-  fs->chown = vroot_fsio_chown;
+  our_fs->link = vroot_fsio_link;
+  our_fs->readlink = vroot_fsio_readlink;
+  our_fs->symlink = vroot_fsio_symlink;
+  our_fs->truncate = vroot_fsio_truncate;
+  our_fs->chmod = vroot_fsio_chmod;
+  our_fs->chown = vroot_fsio_chown;
 #if PROFTPD_VERSION_NUMBER >= 0x0001030407
-  fs->lchown = vroot_fsio_lchown;
+  our_fs->lchown = vroot_fsio_lchown;
 #endif /* ProFTPD 1.3.4c or later */
-  fs->chdir = vroot_fsio_chdir;
-  fs->chroot = vroot_fsio_chroot;
-  fs->utimes = vroot_fsio_utimes;
-  fs->opendir = vroot_fsio_opendir;
-  fs->readdir = vroot_fsio_readdir;
-  fs->closedir = vroot_fsio_closedir;
-  fs->mkdir = vroot_fsio_mkdir;
-  fs->rmdir = vroot_fsio_rmdir;
+  our_fs->chdir = vroot_fsio_chdir;
+  our_fs->chroot = vroot_fsio_chroot;
+  our_fs->utimes = vroot_fsio_utimes;
+  our_fs->opendir = vroot_fsio_opendir;
+  our_fs->readdir = vroot_fsio_readdir;
+  our_fs->closedir = vroot_fsio_closedir;
+  our_fs->mkdir = vroot_fsio_mkdir;
+  our_fs->rmdir = vroot_fsio_rmdir;
 
   vroot_engine = TRUE;
 }
