@@ -1,7 +1,7 @@
 /*
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
- * Copyright (c) 2002-2022 TJ Saunders
+ * Copyright (c) 2002-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -587,6 +587,9 @@ static void vroot_chroot_ev(const void *event_data, void *user_data) {
 #if PROFTPD_VERSION_NUMBER >= 0x0001030407
   fs->lchown = vroot_fsio_lchown;
 #endif /* ProFTPD 1.3.4c or later */
+#if PROFTPD_VERSION_NUMBER >= 0x0001030903
+  fs->realpath = vroot_fsio_realpath;
+#endif /* ProFTPD 1.3.9rc3 or later */
   fs->chdir = vroot_fsio_chdir;
   fs->chroot = vroot_fsio_chroot;
   fs->utimes = vroot_fsio_utimes;
