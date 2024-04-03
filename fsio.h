@@ -1,6 +1,6 @@
 /*
  * ProFTPD - mod_vroot FSIO API
- * Copyright (c) 2016 TJ Saunders
+ * Copyright (c) 2016-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -43,6 +43,7 @@ int vroot_fsio_lchown(pr_fs_t *fs, const char *path, uid_t uid, gid_t gid);
 int vroot_fsio_chroot(pr_fs_t *fs, const char *path);
 int vroot_fsio_chdir(pr_fs_t *fs, const char *path);
 int vroot_fsio_utimes(pr_fs_t *fs, const char *path, struct timeval *tvs);
+const char *vroot_fsio_realpath(pr_fs_t *fs, pool *p, const char *path);
 void *vroot_fsio_opendir(pr_fs_t *fs, const char *path);
 struct dirent *vroot_fsio_readdir(pr_fs_t *fs, void *dirh);
 int vroot_fsio_closedir(pr_fs_t *fs, void *dirh);

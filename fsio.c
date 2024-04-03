@@ -1,6 +1,6 @@
 /*
  * ProFTPD: mod_vroot FSIO API
- * Copyright (c) 2002-2021 TJ Saunders
+ * Copyright (c) 2002-2024 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -640,6 +640,31 @@ int vroot_fsio_utimes(pr_fs_t *fs, const char *utimes_path,
 
   destroy_pool(tmp_pool);
   errno = xerrno;
+  return res;
+}
+
+const char *vroot_fsio_realpath(pr_fs_t *fs, pool *p, const char *path) {
+  const char *res = NULL;
+  int xerrno;
+  char vpath[PR_TUNABLE_PATH_MAX + 1], *real_path = NULL;
+  pool *tmp_pool = NULL;
+
+  tmp_pool = make_sub_pool(p);
+  pr_pool_tag(tmp_pool, "VRoot FSIO realpath pool");
+
+  real_path = vroot_realpath(p, path, VROOT_REALPATH_FL_ABS_PATH);
+
+  if (vroot_path_lookup(NULL, vpath, sizeof(vpath)-1, real_path, 0, NULL) < 0) {
+    xerrno = errno;
+
+    destroy_pool(tmp_pool);
+    errno = xerrno;
+    return NULL;
+  }
+
+  destroy_pool(tmp_pool);
+
+  res = pstrdup(p, vpath);
   return res;
 }
 
