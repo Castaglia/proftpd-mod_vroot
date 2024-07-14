@@ -14,6 +14,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      # We need to avoid using NodeJS v20, because it doesn't work with
+      # older glibc versions.  See:
+      #  https://github.com/actions/checkout/issues/1809.
+      ACTIONS_RUNNER_FORCED_INTERNAL_NODE_VERSION: node16
+      ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node16
+      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+
     strategy:
       matrix:
         compiler:
@@ -28,13 +36,13 @@ jobs:
 
     steps:
       - name: Checkout ProFTPD
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: proftpd/proftpd
           path: proftpd
 
       - name: Checkout module source code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           path: proftpd/contrib/mod_vroot
 
