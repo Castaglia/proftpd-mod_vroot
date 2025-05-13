@@ -18,8 +18,6 @@ jobs:
       # We need to avoid using NodeJS v20, because it doesn't work with
       # older glibc versions.  See:
       #  https://github.com/actions/checkout/issues/1809.
-      ACTIONS_RUNNER_FORCED_INTERNAL_NODE_VERSION: node16
-      ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node16
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
     strategy:
@@ -29,8 +27,8 @@ jobs:
           - gcc
         container:
           - almalinux:8
-          - alpine:3.14
-          - ubuntu:18.04
+          - alpine:3.18
+          - ubuntu:22.04
 
     container: ${{ matrix.container }}
 
@@ -47,7 +45,7 @@ jobs:
           path: proftpd/contrib/mod_vroot
 
       - name: Whitespace check
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           apt-get update -qq
           apt-get install -y git
@@ -60,11 +58,11 @@ jobs:
           fi
 
       - name: Install Alpine packages
-        if: ${{ matrix.container == 'alpine:3.14' }}
+        if: ${{ matrix.container == 'alpine:3.18' }}
         run: |
           apk update
           # for builds
-          apk add bash build-base clang compiler-rt-static gcc make zlib-dev
+          apk add bash build-base clang compiler-rt gcc make zlib-dev
           # for unit tests
           apk add check check-dev subunit subunit-dev
 
@@ -95,7 +93,7 @@ jobs:
           openssl version -a
 
       - name: Install Ubuntu packages
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           apt-get update -qq
           # for builds
@@ -136,7 +134,7 @@ jobs:
           openssl version -a
 
       - name: Prepare code coverage
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           lcov --directory proftpd --zerocounters
 
@@ -152,7 +150,7 @@ jobs:
         env:
           CC: ${{ matrix.compiler }}
         # Note: Skip the unit tests on Alpine
-        if: ${{ matrix.container != 'alpine:3.14' }}
+        if: ${{ matrix.container != 'alpine:3.18' }}
         run: |
           cd proftpd/contrib/mod_vroot
           make TEST_VERBOSE=1 check
@@ -163,7 +161,7 @@ jobs:
           make install
 
       - name: Run integration tests
-        if: ${{ matrix.compiler == 'gcc' && matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.compiler == 'gcc' && matrix.container == 'ubuntu:22.04' }}
         env:
           PROFTPD_TEST_BIN: /usr/local/sbin/proftpd
           PROFTPD_TEST_DIR: ${{ github.workspace }}/proftpd
@@ -198,7 +196,7 @@ jobs:
           CC: ${{ matrix.compiler }}
           CFLAGS: -fsanitize=address,undefined
           LDFLAGS: -fsanitize=address,undefined --coverage
-        if: ${{ matrix.compiler == 'gcc' && matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.compiler == 'gcc' && matrix.container == 'ubuntu:22.04' }}
         run: |
           cd proftpd
           make clean
@@ -209,7 +207,7 @@ jobs:
           make TEST_VERBOSE=1 check
 
       - name: Check HTML docs
-        if: ${{ matrix.container == 'ubuntu:18.04' }}
+        if: ${{ matrix.container == 'ubuntu:22.04' }}
         run: |
           cd proftpd/contrib/mod_vroot
           echo "Processing mod_vroot.html"
