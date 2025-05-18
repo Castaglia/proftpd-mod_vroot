@@ -1,7 +1,7 @@
 /*
  * ProFTPD: mod_vroot -- a module implementing a virtual chroot capability
  *                       via the FSIO API
- * Copyright (c) 2002-2024 TJ Saunders
+ * Copyright (c) 2002-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -225,7 +225,7 @@ MODRET set_vrootserverroot(cmd_rec *cmd) {
 
   c = add_config_param(cmd->argv[0], 1, NULL);
 
-  /* Make sure the configured path has a trailing path separater ('/').
+  /* Make sure the configured path has a trailing path separator ('/').
    * This is important.
    */
 

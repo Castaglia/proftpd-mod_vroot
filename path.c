@@ -1,6 +1,6 @@
 /*
  * ProFTPD: mod_vroot Path API
- * Copyright (c) 2016-2022 TJ Saunders
+ * Copyright (c) 2016-2025 TJ Saunders
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -350,7 +350,7 @@ loop:
         }
 
         /* If this ".." occurrence is NOT the start of the buffer AND the
-         * characters preceeding and following the ".." are slashes, then
+         * characters preceding and following the ".." are slashes, then
          * deny it.
          */
         if (ptr != bufp &&
