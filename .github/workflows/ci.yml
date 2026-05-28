@@ -104,24 +104,6 @@ jobs:
           # for OpenSSL support
           apt-get install -y libssl-dev
 
-          # for integration/regression test
-          apt-get install -y \
-            libcompress-raw-zlib-perl \
-            libdata-dumper-simple-perl \
-            libdatetime-perl \
-            libfile-copy-recursive-perl \
-            libfile-path-tiny-perl \
-            libfile-spec-native-perl \
-            libnet-inet6glue-perl \
-            libnet-ssh2-perl \
-            libnet-ssleay-perl \
-            libnet-telnet-perl \
-            libposix-2008-perl \
-            libtest-unit-perl \
-            libtime-hr-perl \
-            libwww-perl
-          PERL_MM_USE_DEFAULT=1 perl -MCPAN -e 'install Net::FTPSSL'
-
           # for test code coverage
           apt-get install -y lcov ruby
           gem install coveralls-lcov
@@ -159,15 +141,6 @@ jobs:
         run: |
           cd proftpd
           make install
-
-      - name: Run integration tests
-        if: ${{ matrix.compiler == 'gcc' && matrix.container == 'ubuntu:22.04' }}
-        env:
-          PROFTPD_TEST_BIN: /usr/local/sbin/proftpd
-          PROFTPD_TEST_DIR: ${{ github.workspace }}/proftpd
-        run: |
-          cd proftpd/contrib/mod_vroot
-          perl tests.pl
 
       - name: Build as shared module
         env:

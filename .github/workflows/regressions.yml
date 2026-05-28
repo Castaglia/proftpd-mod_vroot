@@ -1,0 +1,99 @@
+name: Regression Tests
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '*.html'
+      - '*.md'
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      # Let's try opting into use of Nodejs v24; see:
+      #  https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+      # GitHub runners still causing problems with NodeJS v20; see:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      DEBIAN_FRONTEND: noninteractive
+      TZ: America/Los_Angeles
+
+    strategy:
+      matrix:
+        compiler:
+          - gcc
+        container:
+          - ubuntu:22.04
+
+    container: ${{ matrix.container }}
+
+    steps:
+      - name: Checkout ProFTPD
+        uses: actions/checkout@v6
+        with:
+          repository: proftpd/proftpd
+          path: proftpd
+
+      - name: Checkout module source code
+        uses: actions/checkout@v6
+        with:
+          path: proftpd/contrib/mod_vroot
+
+      - name: Install Ubuntu packages
+        run: |
+          apt-get update -qq
+          # for builds
+          apt-get install -y gcc git make tzdata
+
+          # for OpenSSL support
+          apt-get install -y libssl-dev
+
+          # for integration/regression tests
+          apt-get install -y \
+            libauthen-oath-perl \
+            libcompress-raw-zlib-perl \
+            libdata-dumper-simple-perl \
+            libdatetime-perl \
+            libfile-copy-recursive-perl \
+            libfile-path-tiny-perl \
+            libfile-spec-native-perl \
+            libmime-base32-perl \
+            libnet-address-ip-local-perl \
+            libnet-inet6glue-perl \
+            libnet-ssh2-perl \
+            libnet-ssleay-perl \
+            libnet-telnet-perl \
+            libposix-2008-perl \
+            libtest-unit-perl \
+            libtime-hr-perl \
+            libwww-perl
+          PERL_MM_USE_DEFAULT=1 perl -MCPAN -e 'install Net::FTPSSL'
+
+          # for debugging
+          gcc --version
+          openssl version -a
+
+      - name: Install with static modules
+        # NOTE: Docker does not have good IPv6 support, hence we disable it.
+        run: |
+          cd proftpd
+          ./configure --enable-ctrls --disable-ipv6 --with-modules=mod_sftp:mod_vroot
+          make
+          ./proftpd -V
+          make install
+
+      - name: Run integration tests
+        env:
+          PROFTPD_TEST_BIN: /usr/local/sbin/proftpd
+          PROFTPD_TEST_CI: github
+          PROFTPD_TEST_DIR: ${{ github.workspace }}/proftpd/tests
+        run: |
+          cd proftpd/contrib/mod_vroot
+          perl tests.pl

@@ -29,7 +29,7 @@ if ($opts->{V}) {
 # block, and we want the module to be loaded at run-time.
 
 if ($ENV{PROFTPD_TEST_DIR}) {
-  push(@INC, "$ENV{PROFTPD_TEST_DIR}/tests/t/lib");
+  push(@INC, "$ENV{PROFTPD_TEST_DIR}/t/lib");
 }
 
 my $test_dir = (File::Spec->splitpath(abs_path(__FILE__)))[1];
