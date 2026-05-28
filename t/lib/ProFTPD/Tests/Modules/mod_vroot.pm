@@ -355,7 +355,7 @@ my $TESTS = {
     test_class => [qw(bug forking)],
   },
 
-  # See:  https://github.com/proftpd/proftpd/issues/59
+  # See: https://github.com/proftpd/proftpd/issues/59
   vroot_alias_enametoolong_bug59 => {
     order => ++$order,
     test_class => [qw(bug forking)],
@@ -363,6 +363,12 @@ my $TESTS = {
 
   # See: https://github.com/proftpd/proftpd/issues/1491
   vroot_root_paths_hidden_issue1491 => {
+    order => ++$order,
+    test_class => [qw(bug forking)],
+  },
+
+  # See: https://github.com/proftpd/proftpd/issues/1808
+  vroot_logfmt_w_f_rename_issue1808 => {
     order => ++$order,
     test_class => [qw(bug forking)],
   },
@@ -12317,6 +12323,173 @@ sub vroot_root_paths_hidden_issue1491 {
   # Stop server
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
+
+  test_cleanup($setup->{log_file}, $ex);
+}
+
+sub vroot_logfmt_w_f_rename_issue1808 {
+  my $self = shift;
+  my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
+
+  my $src_file = File::Spec->rel2abs("$tmpdir/src.dat");
+  if (open(my $fh, "> $src_file")) {
+    print $fh "Hello, World!\n";
+
+    unless (close($fh)) {
+      die("Can't write $src_file: $!");
+    }
+
+  } else {
+    die("Can't open $src_file: $!");
+  }
+
+  my $dst_file = File::Spec->rel2abs("$tmpdir/dst.dat");
+  my $ext_log = File::Spec->rel2abs("$tmpdir/custom.log");
+
+  my $config = {
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:20 jot:20 vroot:20 vroot.path:20',
+
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
+    AuthOrder => 'mod_auth_file.c',
+
+    LogFormat => 'custom "%m: %w -> %f"',
+    ExtendedLog => "$ext_log ALL custom",
+
+    IfModules => {
+      'mod_delay.c' => {
+        DelayEngine => 'off',
+      },
+
+      'mod_vroot.c' => {
+        VRootEngine => 'on',
+        VRootLog => $setup->{log_file},
+        DefaultRoot => '~',
+      },
+    },
+  };
+
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
+
+  # Open pipes, for use between the parent and child processes.  Specifically,
+  # the child will indicate when it's done with its test by writing a message
+  # to the parent.
+  my ($rfh, $wfh);
+  unless (pipe($rfh, $wfh)) {
+    die("Can't open pipe: $!");
+  }
+
+  my $ex;
+
+  # Fork child
+  $self->handle_sigchld();
+  defined(my $pid = fork()) or die("Can't fork: $!");
+  if ($pid) {
+    eval {
+      # Allow for server startup
+      sleep(1);
+
+      my $client = ProFTPD::TestSuite::FTP->new('127.0.0.1', $port);
+      $client->login($setup->{user}, $setup->{passwd});
+      $client->rnfr('src.dat');
+
+      my ($resp_code, $resp_msg) = $client->rnto('dst.dat');
+
+      my $expected = 250;
+      $self->assert($expected == $resp_code,
+        test_msg("Expected response code $expected, got $resp_code"));
+
+      $expected = "Rename successful";
+      $self->assert($expected eq $resp_msg,
+        test_msg("Expected response message '$expected', got $resp_msg"));
+
+      $client->quit();
+
+      $self->assert(-f $dst_file,
+        test_msg("Destination file $dst_file does not exist as expected"));
+    };
+    if ($@) {
+      $ex = $@;
+    }
+
+    $wfh->print("done\n");
+    $wfh->flush();
+
+  } else {
+    eval { server_wait($setup->{config_file}, $rfh) };
+    if ($@) {
+      warn($@);
+      exit 1;
+    }
+
+    exit 0;
+  }
+
+  # Stop server
+  server_stop($setup->{pid_file});
+  $self->assert_child_ok($pid);
+
+  eval {
+    if (open(my $fh, "< $ext_log")) {
+      my $from_ok = 0;
+      my $to_ok = 0;
+
+      if ($^O eq 'darwin') {
+        # MacOSX-specific hack, due to how it handles tmp files
+        $src_file = ('/private' . $src_file);
+        $dst_file = ('/private' . $dst_file);
+      }
+
+      while (my $line = <$fh>) {
+        chomp($line);
+
+        if ($ENV{TEST_VERBOSE}) {
+          print STDERR "# $line\n";
+        }
+
+        if ($line =~ /(\S+): (\S+) -> (\S+)/) {
+          my $cmd = $1;
+          my $from_path = $2;
+          my $to_path = $3;
+
+          if ($cmd eq 'RNFR') {
+            if ($from_path eq '-' &&
+                $to_path eq $src_file) {
+              $from_ok = 1;
+            }
+
+            next;
+          }
+
+          if ($cmd eq 'RNTO') {
+            if ($from_path eq $src_file &&
+                $to_path eq $dst_file) {
+              $to_ok = 1;
+            }
+
+            next;
+          }
+        }
+      }
+
+      close($fh);
+
+      $self->assert($from_ok, test_msg("Did not see expected RNFR log entry"));
+      $self->assert($to_ok, test_msg("Did not see expected RNTO log entry"));
+
+    } else {
+      die("Can't open $ext_log: $!");
+    }
+  };
+  if ($@) {
+    $ex = $@;
+  }
 
   test_cleanup($setup->{log_file}, $ex);
 }
