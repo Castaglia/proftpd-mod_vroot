@@ -220,37 +220,7 @@ sub create_test_file {
 sub vroot_alias_file_sftp_read {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
+  my $setup = test_setup($tmpdir, 'vroot');
 
   my $src_file = File::Spec->rel2abs("$tmpdir/foo.txt");
   if (open(my $fh, "> $src_file")) {
@@ -263,33 +233,39 @@ sub vroot_alias_file_sftp_read {
     die("Can't open $src_file: $!");
   }
 
+  if ($< == 0) {
+    unless (chmod($setup->{uid}, $setup->{gid}, $src_file)) {
+      die("Can't set owner of $src_file to $setup->{uid}/$setup->{gid}: $!");
+    }
+  }
+
   my $dst_file = '~/bar.txt';
 
   my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         DefaultRoot => '~',
 
         VRootAlias => "$src_file $dst_file",
@@ -301,7 +277,8 @@ sub vroot_alias_file_sftp_read {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -323,16 +300,16 @@ sub vroot_alias_file_sftp_read {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -363,11 +340,10 @@ sub vroot_alias_file_sftp_read {
 
       my $expected = 14;
       $self->assert($expected == $size,
-        test_msg("Expected $expected, got $size"));
+        test_msg("Expected size $expected, got $size"));
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -376,7 +352,7 @@ sub vroot_alias_file_sftp_read {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -386,15 +362,10 @@ sub vroot_alias_file_sftp_read {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_sftp_write_no_overwrite {
@@ -466,10 +437,10 @@ sub vroot_alias_file_sftp_write_no_overwrite {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -520,7 +491,7 @@ sub vroot_alias_file_sftp_write_no_overwrite {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_sftp_write {
@@ -652,54 +623,16 @@ sub vroot_alias_file_sftp_write {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_sftp_stat {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
+  my $setup = test_setup($tmpdir, 'vroot');
 
   my $src_file = File::Spec->rel2abs("$tmpdir/foo.txt");
-  if (open(my $fh, "> $src_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $src_file: $!");
-    }
-
-  } else {
-    die("Can't open $src_file: $!");
-  }
+  create_test_file($setup, $src_file);
 
   my $dst_file = '~/bar.txt';
 
@@ -707,27 +640,27 @@ sub vroot_alias_file_sftp_stat {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         DefaultRoot => '~',
 
         VRootAlias => "$src_file $dst_file",
@@ -739,7 +672,8 @@ sub vroot_alias_file_sftp_stat {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -761,16 +695,16 @@ sub vroot_alias_file_sftp_stat {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -790,21 +724,26 @@ sub vroot_alias_file_sftp_stat {
       my $expected = 14;
       my $file_size = $attrs->{size};
       $self->assert($expected == $file_size,
-        test_msg("Expected $expected, got $file_size"));
+        test_msg("Expected size $expected, got $file_size"));
 
       $expected = $<;
+      if ($< == 0) {
+        $expected = $setup->{uid};
+      }
       my $file_uid = $attrs->{uid};
       $self->assert($expected == $file_uid,
-        test_msg("Expected '$expected', got '$file_uid'"));
+        test_msg("Expected file UID '$expected', got '$file_uid'"));
 
       $expected = $(;
+      if ($< == 0) {
+        $expected = $setup->{gid};
+      }
       my $file_gid = $attrs->{gid};
       $self->assert($expected == $file_gid,
-        test_msg("Expected '$expected', got '$file_gid'"));
+        test_msg("Expected file GID '$expected', got '$file_gid'"));
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -813,7 +752,7 @@ sub vroot_alias_file_sftp_stat {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -823,62 +762,19 @@ sub vroot_alias_file_sftp_stat {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_sftp_lstat {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
+  my $setup = test_setup($tmpdir, 'vroot');
 
   my $src_file = File::Spec->rel2abs("$tmpdir/foo.txt");
-  if (open(my $fh, "> $src_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $src_file: $!");
-    }
-
-  } else {
-    die("Can't open $src_file: $!");
-  }
+  create_test_file($setup, $src_file);
 
   my $dst_file = '~/bar.txt';
 
@@ -886,27 +782,27 @@ sub vroot_alias_file_sftp_lstat {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         DefaultRoot => '~',
 
         VRootAlias => "$src_file $dst_file",
@@ -918,7 +814,8 @@ sub vroot_alias_file_sftp_lstat {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -940,16 +837,16 @@ sub vroot_alias_file_sftp_lstat {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -969,21 +866,26 @@ sub vroot_alias_file_sftp_lstat {
       my $expected = 14;
       my $file_size = $attrs->{size};
       $self->assert($expected == $file_size,
-        test_msg("Expected $expected, got $file_size"));
+        test_msg("Expected size $expected, got $file_size"));
 
       $expected = $<;
+      if ($< == 0) {
+        $expected = $setup->{uid};
+      }
       my $file_uid = $attrs->{uid};
       $self->assert($expected == $file_uid,
-        test_msg("Expected '$expected', got '$file_uid'"));
+        test_msg("Expected file UID '$expected', got '$file_uid'"));
 
       $expected = $(;
+      if ($< == 0) {
+        $expected = $setup->{gid};
+      }
       my $file_gid = $attrs->{gid};
       $self->assert($expected == $file_gid,
-        test_msg("Expected '$expected', got '$file_gid'"));
+        test_msg("Expected file GID '$expected', got '$file_gid'"));
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -992,7 +894,7 @@ sub vroot_alias_file_sftp_lstat {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -1002,62 +904,19 @@ sub vroot_alias_file_sftp_lstat {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_sftp_realpath {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
+  my $setup = test_setup($tmpdir, 'vroot');
 
   my $src_file = File::Spec->rel2abs("$tmpdir/foo.txt");
-  if (open(my $fh, "> $src_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $src_file: $!");
-    }
-
-  } else {
-    die("Can't open $src_file: $!");
-  }
+  create_test_file($setup, $src_file);
 
   my $dst_file = '~/bar.txt';
 
@@ -1065,27 +924,27 @@ sub vroot_alias_file_sftp_realpath {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         DefaultRoot => '~',
 
         VRootAlias => "$src_file $dst_file",
@@ -1097,7 +956,8 @@ sub vroot_alias_file_sftp_realpath {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -1119,16 +979,16 @@ sub vroot_alias_file_sftp_realpath {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -1145,15 +1005,12 @@ sub vroot_alias_file_sftp_realpath {
         die("Can't get real path for 'bar.txt': [$err_name] ($err_code)");
       }
 
-      my $expected;
-
-      $expected = '/bar.txt';
+      my $expected = '/bar.txt';
       $self->assert($expected eq $real_path,
         test_msg("Expected '$expected', got '$real_path'"));
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1162,7 +1019,7 @@ sub vroot_alias_file_sftp_realpath {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -1172,62 +1029,19 @@ sub vroot_alias_file_sftp_realpath {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_sftp_remove {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
+  my $setup = test_setup($tmpdir, 'vroot');
 
   my $src_file = File::Spec->rel2abs("$tmpdir/foo.txt");
-  if (open(my $fh, "> $src_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $src_file: $!");
-    }
-
-  } else {
-    die("Can't open $src_file: $!");
-  }
+  create_test_file($setup, $src_file);
 
   my $dst_file = '~/bar.txt';
 
@@ -1235,27 +1049,27 @@ sub vroot_alias_file_sftp_remove {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         DefaultRoot => '~',
 
         VRootAlias => "$src_file $dst_file",
@@ -1267,7 +1081,8 @@ sub vroot_alias_file_sftp_remove {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -1289,16 +1104,16 @@ sub vroot_alias_file_sftp_remove {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -1322,7 +1137,6 @@ sub vroot_alias_file_sftp_remove {
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1331,7 +1145,7 @@ sub vroot_alias_file_sftp_remove {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -1341,51 +1155,16 @@ sub vroot_alias_file_sftp_remove {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_dir_sftp_readdir {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
+  my $setup = test_setup($tmpdir, 'vroot');
 
   my $src_dir = File::Spec->rel2abs("$tmpdir/foo.d");
   mkpath($src_dir);
@@ -1393,54 +1172,39 @@ sub vroot_alias_dir_sftp_readdir {
   my $dst_dir = '~/bar.d';
 
   my $test_file1 = File::Spec->rel2abs("$tmpdir/foo.d/a.txt");
-  if (open(my $fh, "> $test_file1")) {
-    close($fh);
-
-  } else {
-    die("Can't open $test_file1: $!");
-  }
+  create_test_file($setup, $test_file1);
 
   my $test_file2 = File::Spec->rel2abs("$tmpdir/foo.d/b.txt");
-  if (open(my $fh, "> $test_file2")) {
-    close($fh);
-
-  } else {
-    die("Can't open $test_file2: $!");
-  }
+  create_test_file($setup, $test_file2);
 
   my $test_file3 = File::Spec->rel2abs("$tmpdir/foo.d/c.txt");
-  if (open(my $fh, "> $test_file3")) {
-    close($fh);
-
-  } else {
-    die("Can't open $test_file3: $!");
-  }
+  create_test_file($setup, $test_file3);
 
   my $rsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_rsa_key");
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         DefaultRoot => '~',
 
         VRootAlias => "$src_dir $dst_dir",
@@ -1452,7 +1216,8 @@ sub vroot_alias_dir_sftp_readdir {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -1474,16 +1239,16 @@ sub vroot_alias_dir_sftp_readdir {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -1549,7 +1314,6 @@ sub vroot_alias_dir_sftp_readdir {
       $self->assert(0 == $remaining,
         test_msg("Expected 0, got $remaining"));
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1558,7 +1322,7 @@ sub vroot_alias_dir_sftp_readdir {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -1568,51 +1332,16 @@ sub vroot_alias_dir_sftp_readdir {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_dir_sftp_rmdir {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
+  my $setup = test_setup($tmpdir, 'vroot');
 
   my $src_dir = File::Spec->rel2abs("$tmpdir/foo.d");
   mkpath($src_dir);
@@ -1623,27 +1352,27 @@ sub vroot_alias_dir_sftp_rmdir {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         DefaultRoot => '~',
 
         VRootAlias => "$src_dir $dst_dir",
@@ -1655,7 +1384,8 @@ sub vroot_alias_dir_sftp_rmdir {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -1677,16 +1407,16 @@ sub vroot_alias_dir_sftp_rmdir {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -1710,7 +1440,6 @@ sub vroot_alias_dir_sftp_rmdir {
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1719,7 +1448,7 @@ sub vroot_alias_dir_sftp_rmdir {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -1729,67 +1458,24 @@ sub vroot_alias_dir_sftp_rmdir {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_symlink_sftp_stat {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
-
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
+  my $setup = test_setup($tmpdir, 'vroot');
 
   my $src_file = File::Spec->rel2abs("$tmpdir/foo.txt");
-  if (open(my $fh, "> $src_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $src_file: $!");
-    }
-
-  } else {
-    die("Can't open $src_file: $!");
-  }
+  create_test_file($setup, $src_file);
 
   my $cwd = getcwd();
 
-  unless (chdir($home_dir)) {
-    die("Can't chdir to $home_dir: $!");
+  unless (chdir($setup->{home_dir})) {
+    die("Can't chdir to $setup->{home_dir}: $!");
   }
 
   unless (symlink("./foo.txt", "foo.lnk")) {
@@ -1807,27 +1493,27 @@ sub vroot_alias_symlink_sftp_stat {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         VRootOptions => 'allowSymlinks',
         DefaultRoot => '~',
 
@@ -1840,7 +1526,8 @@ sub vroot_alias_symlink_sftp_stat {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -1862,16 +1549,16 @@ sub vroot_alias_symlink_sftp_stat {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -1891,21 +1578,26 @@ sub vroot_alias_symlink_sftp_stat {
       my $expected = 14;
       my $file_size = $attrs->{size};
       $self->assert($expected == $file_size,
-        test_msg("Expected $expected, got $file_size"));
+        test_msg("Expected size $expected, got $file_size"));
 
       $expected = $<;
+      if ($< == 0) {
+        $expected = $setup->{uid};
+      }
       my $file_uid = $attrs->{uid};
       $self->assert($expected == $file_uid,
-        test_msg("Expected '$expected', got '$file_uid'"));
+        test_msg("Expected file UID '$expected', got '$file_uid'"));
 
       $expected = $(;
+      if ($< == 0) {
+        $expected = $setup->{gid};
+      }
       my $file_gid = $attrs->{gid};
       $self->assert($expected == $file_gid,
-        test_msg("Expected '$expected', got '$file_gid'"));
+        test_msg("Expected file GID '$expected', got '$file_gid'"));
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -1914,7 +1606,7 @@ sub vroot_alias_symlink_sftp_stat {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -1924,67 +1616,24 @@ sub vroot_alias_symlink_sftp_stat {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_symlink_sftp_lstat {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
 
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
-
-  my $src_file = File::Spec->rel2abs("$tmpdir/foo.txt");
-  if (open(my $fh, "> $src_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $src_file: $!");
-    }
-
-  } else {
-    die("Can't open $src_file: $!");
-  }
+  my $src_file = File::Spec->rel2abs("$setup->{home_dir}/foo.txt");
+  create_test_file($setup, $src_file);
 
   my $cwd = getcwd();
 
-  unless (chdir($home_dir)) {
-    die("Can't chdir to $home_dir: $!");
+  unless (chdir($setup->{home_dir})) {
+    die("Can't chdir to $setup->{home_dir}: $!");
   }
 
   unless (symlink("./foo.txt", "foo.lnk")) {
@@ -2002,27 +1651,27 @@ sub vroot_alias_symlink_sftp_lstat {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         VRootOptions => 'allowSymlinks',
         DefaultRoot => '~',
 
@@ -2035,7 +1684,8 @@ sub vroot_alias_symlink_sftp_lstat {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -2057,16 +1707,16 @@ sub vroot_alias_symlink_sftp_lstat {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -2086,21 +1736,26 @@ sub vroot_alias_symlink_sftp_lstat {
       my $expected = 14;
       my $file_size = $attrs->{size};
       $self->assert($expected == $file_size,
-        test_msg("Expected $expected, got $file_size"));
+        test_msg("Expected size $expected, got $file_size"));
 
       $expected = $<;
+      if ($< == 0) {
+        $expected = $setup->{uid};
+      }
       my $file_uid = $attrs->{uid};
       $self->assert($expected == $file_uid,
-        test_msg("Expected '$expected', got '$file_uid'"));
+        test_msg("Expected file UID '$expected', got '$file_uid'"));
 
       $expected = $(;
+      if ($< == 0) {
+        $expected = $setup->{gid};
+      }
       my $file_gid = $attrs->{gid};
       $self->assert($expected == $file_gid,
-        test_msg("Expected '$expected', got '$file_gid'"));
+        test_msg("Expected file GID '$expected', got '$file_gid'"));
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -2109,7 +1764,7 @@ sub vroot_alias_symlink_sftp_lstat {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -2119,67 +1774,24 @@ sub vroot_alias_symlink_sftp_lstat {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_symlink_sftp_realpath {
   my $self = shift;
   my $tmpdir = $self->{tmpdir};
+  my $setup = test_setup($tmpdir, 'vroot');
 
-  my $config_file = "$tmpdir/vroot.conf";
-  my $pid_file = File::Spec->rel2abs("$tmpdir/vroot.pid");
-  my $scoreboard_file = File::Spec->rel2abs("$tmpdir/vroot.scoreboard");
-
-  my $log_file = File::Spec->rel2abs('tests.log');
-
-  my $auth_user_file = File::Spec->rel2abs("$tmpdir/vroot.passwd");
-  my $auth_group_file = File::Spec->rel2abs("$tmpdir/vroot.group");
-
-  my $user = 'proftpd';
-  my $passwd = 'test';
-  my $home_dir = File::Spec->rel2abs($tmpdir);
-  my $uid = 500;
-  my $gid = 500;
-
-  # Make sure that, if we're running as root, that the home directory has
-  # permissions/privs set for the account we create
-  if ($< == 0) {
-    unless (chmod(0755, $home_dir)) {
-      die("Can't set perms on $home_dir to 0755: $!");
-    }
-
-    unless (chown($uid, $gid, $home_dir)) {
-      die("Can't set owner of $home_dir to $uid/$gid: $!");
-    }
-  }
-
-  auth_user_write($auth_user_file, $user, $passwd, $uid, $gid, $home_dir,
-    '/bin/bash');
-  auth_group_write($auth_group_file, 'ftpd', $gid, $user);
-
-  my $src_file = File::Spec->rel2abs("$tmpdir/foo.txt");
-  if (open(my $fh, "> $src_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $src_file: $!");
-    }
-
-  } else {
-    die("Can't open $src_file: $!");
-  }
+  my $src_file = File::Spec->rel2abs("$setup->{home_dir}/foo.txt");
+  create_test_file($setup, $src_file);
 
   my $cwd = getcwd();
 
-  unless (chdir($home_dir)) {
-    die("Can't chdir to $home_dir: $!");
+  unless (chdir($setup->{home_dir})) {
+    die("Can't chdir to $setup->{home_dir}: $!");
   }
 
   unless (symlink("./foo.txt", "foo.lnk")) {
@@ -2197,27 +1809,27 @@ sub vroot_alias_symlink_sftp_realpath {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $config = {
-    PidFile => $pid_file,
-    ScoreboardFile => $scoreboard_file,
-    SystemLog => $log_file,
-    TraceLog => $log_file,
-    Trace => 'fsio:10',
+    PidFile => $setup->{pid_file},
+    ScoreboardFile => $setup->{scoreboard_file},
+    SystemLog => $setup->{log_file},
+    TraceLog => $setup->{log_file},
+    Trace => 'fsio:10 vroot:20',
 
-    AuthUserFile => $auth_user_file,
-    AuthGroupFile => $auth_group_file,
+    AuthUserFile => $setup->{auth_user_file},
+    AuthGroupFile => $setup->{auth_group_file},
     AuthOrder => 'mod_auth_file.c',
 
     IfModules => {
       'mod_sftp.c' => [
         "SFTPEngine on",
-        "SFTPLog $log_file",
+        "SFTPLog $setup->{log_file}",
         "SFTPHostKey $rsa_host_key",
         "SFTPHostKey $dsa_host_key",
       ],
 
       'mod_vroot.c' => {
         VRootEngine => 'on',
-        VRootLog => $log_file,
+        VRootLog => $setup->{log_file},
         VRootOptions => 'allowSymlinks',
         DefaultRoot => '~',
 
@@ -2230,7 +1842,8 @@ sub vroot_alias_symlink_sftp_realpath {
     },
   };
 
-  my ($port, $config_user, $config_group) = config_write($config_file, $config);
+  my ($port, $config_user, $config_group) = config_write($setup->{config_file},
+    $config);
 
   # Open pipes, for use between the parent and child processes.  Specifically,
   # the child will indicate when it's done with its test by writing a message
@@ -2252,16 +1865,16 @@ sub vroot_alias_symlink_sftp_realpath {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
       }
 
-      unless ($ssh2->auth_password($user, $passwd)) {
+      unless ($ssh2->auth_password($setup->{user}, $setup->{passwd})) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't login to SSH2 server: [$err_name] ($err_code) $err_str");
       }
@@ -2284,7 +1897,6 @@ sub vroot_alias_symlink_sftp_realpath {
 
       $ssh2->disconnect();
     };
-
     if ($@) {
       $ex = $@;
     }
@@ -2293,7 +1905,7 @@ sub vroot_alias_symlink_sftp_realpath {
     $wfh->flush();
 
   } else {
-    eval { server_wait($config_file, $rfh) };
+    eval { server_wait($setup->{config_file}, $rfh) };
     if ($@) {
       warn($@);
       exit 1;
@@ -2303,15 +1915,10 @@ sub vroot_alias_symlink_sftp_realpath {
   }
 
   # Stop server
-  server_stop($pid_file);
-
+  server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  if ($ex) {
-    die($ex);
-  }
-
-  unlink($log_file);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_scp_download {
@@ -2431,7 +2038,7 @@ sub vroot_alias_file_scp_download {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_scp_upload {
@@ -2453,7 +2060,7 @@ sub vroot_alias_file_scp_upload {
     ScoreboardFile => $setup->{scoreboard_file},
     SystemLog => $setup->{log_file},
     TraceLog => $setup->{log_file},
-    Trace => 'fsio:10',
+    Trace => 'fsio:10 ssh2:20 scp:20',
 
     AuthUserFile => $setup->{auth_user_file},
     AuthGroupFile => $setup->{auth_group_file},
@@ -2549,7 +2156,7 @@ sub vroot_alias_file_scp_upload {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_sftp_log_extlog_retr {
@@ -2561,15 +2168,7 @@ sub vroot_sftp_log_extlog_retr {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
-  if (open(my $fh, "> $test_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $test_file: $!");
-    }
-
-  } else {
-    die("Can't open $test_file: $!");
-  }
+  create_test_file($setup, $test_file);
 
   my $ext_log = File::Spec->rel2abs("$tmpdir/custom.log");
 
@@ -2626,10 +2225,10 @@ sub vroot_sftp_log_extlog_retr {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -2694,7 +2293,7 @@ sub vroot_sftp_log_extlog_retr {
       chomp($line);
 
       if ($ENV{TEST_VERBOSE}) {
-        print STDERR "$line\n";
+        print STDERR "# $line\n";
       }
 
       if ($^O eq 'darwin') {
@@ -2713,7 +2312,7 @@ sub vroot_sftp_log_extlog_retr {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_sftp_log_xferlog_retr {
@@ -2725,15 +2324,7 @@ sub vroot_sftp_log_xferlog_retr {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
-  if (open(my $fh, "> $test_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $test_file: $!");
-    }
-
-  } else {
-    die("Can't open $test_file: $!");
-  }
+  create_test_file($setup, $test_file);
 
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
 
@@ -2789,10 +2380,10 @@ sub vroot_sftp_log_xferlog_retr {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -2857,7 +2448,7 @@ sub vroot_sftp_log_xferlog_retr {
       close($fh);
 
       if ($ENV{TEST_VERBOSE}) {
-        print STDERR "$line\n";
+        print STDERR "# $line\n";
       }
 
       my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+o\s+r\s+(\S+)\s+sftp\s+0\s+\*\s+c$';
@@ -2878,23 +2469,23 @@ sub vroot_sftp_log_xferlog_retr {
 
         $expected = '127.0.0.1';
         $self->assert($expected eq $remote_host,
-          "Expected '$expected', got '$remote_host'");
+          "Expected remote host '$expected', got '$remote_host'");
 
         $expected = -s $test_file;
         $self->assert($expected == $filesz,
-          "Expected '$expected', got '$filesz'");
+          "Expected size '$expected', got '$filesz'");
 
         $expected = $test_file;
         $self->assert($expected eq $filename,
-          "Expected '$expected', got '$filename'");
+          "Expected filename '$expected', got '$filename'");
 
         $expected = 'b';
         $self->assert($expected eq $xfer_type,
-          "Expected '$expected', got '$xfer_type'");
+          "Expected transfer type '$expected', got '$xfer_type'");
 
         $expected = $setup->{user};
         $self->assert($expected eq $user_name,
-          "Expected '$expected', got '$user_name'");
+          "Expected user name '$expected', got '$user_name'");
       }
 
     } else {
@@ -2905,7 +2496,7 @@ sub vroot_sftp_log_xferlog_retr {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_sftp_log_extlog_stor {
@@ -2972,10 +2563,10 @@ sub vroot_sftp_log_extlog_stor {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -3053,7 +2644,7 @@ sub vroot_sftp_log_extlog_stor {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_sftp_log_xferlog_stor {
@@ -3119,10 +2710,10 @@ sub vroot_sftp_log_xferlog_stor {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -3181,7 +2772,7 @@ sub vroot_sftp_log_xferlog_stor {
       close($fh);
 
       if ($ENV{TEST_VERBOSE}) {
-        print STDERR "$line\n";
+        print STDERR "# $line\n";
       }
 
       my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+i\s+r\s+(\S+)\s+sftp\s+0\s+\*\s+c$';
@@ -3202,23 +2793,23 @@ sub vroot_sftp_log_xferlog_stor {
 
         $expected = '127.0.0.1';
         $self->assert($expected eq $remote_host,
-          "Expected '$expected', got '$remote_host'");
+          "Expected remote host '$expected', got '$remote_host'");
 
         $expected = -s $test_file;
         $self->assert($expected == $filesz,
-          "Expected '$expected', got '$filesz'");
+          "Expected size '$expected', got '$filesz'");
 
         $expected = $test_file;
         $self->assert($expected eq $filename,
-          "Expected '$expected', got '$filename'");
+          "Expected filename '$expected', got '$filename'");
 
         $expected = 'b';
         $self->assert($expected eq $xfer_type,
-          "Expected '$expected', got '$xfer_type'");
+          "Expected transfer type '$expected', got '$xfer_type'");
 
         $expected = $setup->{user};
         $self->assert($expected eq $user_name,
-          "Expected '$expected', got '$user_name'");
+          "Expected user name '$expected', got '$user_name'");
       }
 
     } else {
@@ -3229,7 +2820,7 @@ sub vroot_sftp_log_xferlog_stor {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_sftp_quotatab_dir_issue1764 {
@@ -3388,7 +2979,7 @@ sub vroot_sftp_quotatab_dir_issue1764 {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_scp_log_extlog_retr {
@@ -3400,15 +2991,7 @@ sub vroot_scp_log_extlog_retr {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
-  if (open(my $fh, "> $test_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $test_file: $!");
-    }
-
-  } else {
-    die("Can't open $test_file: $!");
-  }
+  create_test_file($setup, $test_file);
 
   my $ext_log = File::Spec->rel2abs("$tmpdir/ext.log");
 
@@ -3465,10 +3048,10 @@ sub vroot_scp_log_extlog_retr {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -3514,7 +3097,7 @@ sub vroot_scp_log_extlog_retr {
       close($fh);
 
       if ($ENV{TEST_VERBOSE}) {
-        print STDERR "$line\n";
+        print STDERR "# $line\n";
       }
 
       if ($^O eq 'darwin') {
@@ -3533,7 +3116,7 @@ sub vroot_scp_log_extlog_retr {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_scp_log_xferlog_retr {
@@ -3545,15 +3128,7 @@ sub vroot_scp_log_xferlog_retr {
   my $dsa_host_key = File::Spec->rel2abs("$ENV{PROFTPD_TEST_DIR}/t/etc/modules/mod_sftp/ssh_host_dsa_key");
 
   my $test_file = File::Spec->rel2abs("$tmpdir/test.txt");
-  if (open(my $fh, "> $test_file")) {
-    print $fh "Hello, World!\n";
-    unless (close($fh)) {
-      die("Can't write $test_file: $!");
-    }
-
-  } else {
-    die("Can't open $test_file: $!");
-  }
+  create_test_file($setup, $test_file);
 
   my $xfer_log = File::Spec->rel2abs("$tmpdir/xfer.log");
 
@@ -3609,10 +3184,10 @@ sub vroot_scp_log_xferlog_retr {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -3658,7 +3233,7 @@ sub vroot_scp_log_xferlog_retr {
       close($fh);
 
       if ($ENV{TEST_VERBOSE}) {
-        print STDERR "$line\n";
+        print STDERR "# $line\n";
       }
 
       my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+o\s+r\s+(\S+)\s+scp\s+0\s+\*\s+c$';
@@ -3679,23 +3254,23 @@ sub vroot_scp_log_xferlog_retr {
 
         $expected = '127.0.0.1';
         $self->assert($expected eq $remote_host,
-          "Expected '$expected', got '$remote_host'");
+          "Expected remote host '$expected', got '$remote_host'");
 
         $expected = -s $test_file;
         $self->assert($expected == $filesz,
-          "Expected '$expected', got '$filesz'");
+          "Expected size '$expected', got '$filesz'");
 
         $expected = $test_file;
         $self->assert($expected eq $filename,
-          "Expected '$expected', got '$filename'");
+          "Expected filename '$expected', got '$filename'");
 
         $expected = 'b';
         $self->assert($expected eq $xfer_type,
-          "Expected '$expected', got '$xfer_type'");
+          "Expected transfer type '$expected', got '$xfer_type'");
 
         $expected = $setup->{user};
         $self->assert($expected eq $user_name,
-          "Expected '$expected', got '$user_name'");
+          "Expected user name '$expected', got '$user_name'");
       }
 
     } else {
@@ -3706,7 +3281,7 @@ sub vroot_scp_log_xferlog_retr {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_scp_log_extlog_stor {
@@ -3773,10 +3348,10 @@ sub vroot_scp_log_extlog_stor {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -3822,7 +3397,7 @@ sub vroot_scp_log_extlog_stor {
       close($fh);
 
       if ($ENV{TEST_VERBOSE}) {
-        print STDERR "$line\n";
+        print STDERR "# $line\n";
       }
 
       if ($^O eq 'darwin') {
@@ -3841,7 +3416,7 @@ sub vroot_scp_log_extlog_stor {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_scp_log_xferlog_stor {
@@ -3907,10 +3482,10 @@ sub vroot_scp_log_xferlog_stor {
   defined(my $pid = fork()) or die("Can't fork: $!");
   if ($pid) {
     eval {
-      my $ssh2 = Net::SSH2->new();
-
+      # Allow for server startup
       sleep(1);
 
+      my $ssh2 = Net::SSH2->new();
       unless ($ssh2->connect('127.0.0.1', $port)) {
         my ($err_code, $err_name, $err_str) = $ssh2->error();
         die("Can't connect to SSH2 server: [$err_name] ($err_code) $err_str");
@@ -3956,7 +3531,7 @@ sub vroot_scp_log_xferlog_stor {
       close($fh);
 
       if ($ENV{TEST_VERBOSE}) {
-        print STDERR "$line\n";
+        print STDERR "# $line\n";
       }
 
       my $expected = '^\S+\s+\S+\s+\d+\s+\d+:\d+:\d+\s+\d+\s+\d+\s+(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+_\s+i\s+r\s+(\S+)\s+scp\s+0\s+\*\s+c$';
@@ -3977,23 +3552,23 @@ sub vroot_scp_log_xferlog_stor {
 
         $expected = '127.0.0.1';
         $self->assert($expected eq $remote_host,
-          "Expected '$expected', got '$remote_host'");
+          "Expected remote host '$expected', got '$remote_host'");
 
         $expected = -s $test_file;
         $self->assert($expected == $filesz,
-          "Expected '$expected', got '$filesz'");
+          "Expected size '$expected', got '$filesz'");
 
         $expected = $test_file;
         $self->assert($expected eq $filename,
-          "Expected '$expected', got '$filename'");
+          "Expected filename '$expected', got '$filename'");
 
         $expected = 'b';
         $self->assert($expected eq $xfer_type,
-          "Expected '$expected', got '$xfer_type'");
+          "Expected transfer type '$expected', got '$xfer_type'");
 
         $expected = $setup->{user};
         $self->assert($expected eq $user_name,
-          "Expected '$expected', got '$user_name'");
+          "Expected user name '$expected', got '$user_name'");
       }
 
     } else {
@@ -4004,7 +3579,7 @@ sub vroot_scp_log_xferlog_stor {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_dir_sftp_publickey_issue30 {
@@ -4168,6 +3743,9 @@ sub vroot_alias_dir_sftp_publickey_issue30 {
 
       my $seen = [];
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         push(@$seen, $name);
 
         unless (defined($expected->{$name})) {
@@ -4212,7 +3790,7 @@ sub vroot_alias_dir_sftp_publickey_issue30 {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
   delete($ENV{TEST_VERBOSE});
 }
 

@@ -551,6 +551,9 @@ sub vroot_engine {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -617,6 +620,9 @@ sub vroot_engine {
 
       $ok = 1;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -682,6 +688,9 @@ sub vroot_engine {
 
       $ok = 1;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -716,7 +725,7 @@ sub vroot_engine {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_anon {
@@ -828,6 +837,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -894,6 +906,9 @@ EOC
 
       $ok = 1;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -959,6 +974,9 @@ EOC
 
       $ok = 1;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -993,7 +1011,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_anon_limit_write_allow_stor {
@@ -1136,7 +1154,7 @@ EOC
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_symlink {
@@ -1293,7 +1311,7 @@ sub vroot_symlink {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_symlink_eloop {
@@ -1442,7 +1460,7 @@ sub vroot_symlink_eloop {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_opt_allow_symlinks_file {
@@ -1614,7 +1632,7 @@ sub vroot_opt_allow_symlinks_file {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_opt_allow_symlinks_dir_retr {
@@ -1785,7 +1803,7 @@ sub vroot_opt_allow_symlinks_dir_retr {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_opt_allow_symlinks_dir_stor_no_overwrite {
@@ -2161,7 +2179,7 @@ sub vroot_opt_allow_symlinks_dir_stor {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_opt_allow_symlinks_dir_cwd {
@@ -2583,7 +2601,7 @@ sub vroot_dir_mkd {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_server_root {
@@ -3139,6 +3157,9 @@ sub vroot_alias_file_list {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -3336,6 +3357,9 @@ sub vroot_alias_file_list_multi {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -3488,7 +3512,7 @@ sub vroot_alias_file_retr {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_stor_no_overwrite {
@@ -3591,7 +3615,7 @@ sub vroot_alias_file_stor_no_overwrite {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_stor {
@@ -3695,7 +3719,7 @@ sub vroot_alias_file_stor {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_file_dele {
@@ -4279,6 +4303,9 @@ sub vroot_alias_dup_same_name {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -4468,6 +4495,9 @@ sub vroot_alias_dup_colliding_aliases {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -4667,6 +4697,9 @@ sub vroot_alias_delete_source {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -4843,6 +4876,9 @@ sub vroot_alias_no_source {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -5023,6 +5059,9 @@ sub vroot_alias_dir_list_no_trailing_slash {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -5203,6 +5242,9 @@ sub vroot_alias_dir_list_with_trailing_slash {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -5794,7 +5836,7 @@ sub vroot_alias_dir_cwd_stor {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_dir_cwd_cdup {
@@ -6062,7 +6104,7 @@ sub vroot_alias_dir_mkd {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_dir_rmd {
@@ -7171,7 +7213,7 @@ sub vroot_alias_dir_mlst {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_dir_list_multi_issue22 {
@@ -7296,6 +7338,9 @@ sub vroot_alias_dir_list_multi_issue22 {
       my $ok = 1;
       my $mismatch = '';
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -7382,7 +7427,7 @@ sub vroot_alias_dir_list_multi_issue22 {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_dir_mlsd_multi_issue22 {
@@ -7503,6 +7548,9 @@ sub vroot_alias_dir_mlsd_multi_issue22 {
       my $ok = 1;
       my $mismatch = '';
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -7538,7 +7586,7 @@ sub vroot_alias_dir_mlsd_multi_issue22 {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_symlink_list {
@@ -7701,6 +7749,9 @@ sub vroot_alias_symlink_list {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -7868,7 +7919,7 @@ sub vroot_alias_symlink_retr {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_symlink_stor_no_overwrite {
@@ -7988,7 +8039,7 @@ sub vroot_alias_symlink_stor_no_overwrite {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_symlink_stor {
@@ -8110,7 +8161,7 @@ sub vroot_alias_symlink_stor {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_symlink_mlsd {
@@ -8595,6 +8646,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -8800,6 +8854,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -9005,6 +9062,9 @@ EOC
       my $ok = 1;
       my $mismatch = '';
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -9284,6 +9344,9 @@ EOC
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -9522,7 +9585,7 @@ sub vroot_showsymlinks_on {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_hiddenstores_on_double_dot {
@@ -9772,7 +9835,7 @@ sub vroot_mfmt {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_log_extlog_retr {
@@ -9899,7 +9962,7 @@ sub vroot_log_extlog_retr {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_log_extlog_stor {
@@ -10213,7 +10276,7 @@ sub vroot_log_xferlog_retr {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_log_xferlog_stor {
@@ -10814,7 +10877,7 @@ sub vroot_config_deleteabortedstores_cmd_aborted {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
   delete($ENV{TEST_VERBOSE});
 }
 
@@ -10969,6 +11032,9 @@ sub vroot_alias_var_u_file {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -11162,6 +11228,9 @@ sub vroot_alias_var_u_dir {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -11329,6 +11398,9 @@ sub vroot_alias_var_u_dir_with_stor_mff {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -11397,7 +11469,7 @@ sub vroot_alias_var_u_dir_with_stor_mff {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_var_u_symlink_dir {
@@ -11559,6 +11631,9 @@ sub vroot_alias_var_u_symlink_dir {
       my $ok = 1;
       my $mismatch;
       foreach my $name (keys(%$res)) {
+        # Ignore ASAN logs
+        next if $name =~ /asan\.log/;
+
         unless (defined($expected->{$name})) {
           $mismatch = $name;
           $ok = 0;
@@ -11781,7 +11856,7 @@ sub vroot_alias_bad_src_dst_check_bug4 {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_bad_alias_dirscan_bug5 {
@@ -11939,7 +12014,7 @@ sub vroot_alias_bad_alias_dirscan_bug5 {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_alias_enametoolong_bug59 {
@@ -12324,7 +12399,7 @@ sub vroot_root_paths_hidden_issue1491 {
   server_stop($setup->{pid_file});
   $self->assert_child_ok($pid);
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 sub vroot_logfmt_w_f_rename_issue1808 {
@@ -12491,7 +12566,7 @@ sub vroot_logfmt_w_f_rename_issue1808 {
     $ex = $@;
   }
 
-  test_cleanup($setup->{log_file}, $ex);
+  test_cleanup($setup, $ex);
 }
 
 1;
