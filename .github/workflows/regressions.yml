@@ -50,10 +50,10 @@ jobs:
         run: |
           apt-get update -qq
           # for builds
-          apt-get install -y --no-install-recommends gcc git make tzdata
+          apt-get install -y --no-install-recommends build-essential gcc git make tzdata
 
           # for OpenSSL support
-          apt-get install -y --no-install-recommends libssl-dev
+          apt-get install -y --no-install-recommends libssl-dev openssl
 
           # for integration/regression tests
           apt-get install -y --no-install-recommends \
