@@ -293,7 +293,7 @@ MODRET vroot_pre_scp_retr(cmd_rec *cmd) {
 
   /* Unlike SFTP sessions, mod_sftp does NOT set these cmd->notes for SCP
    * sessions before doing the PRE_CMD dispatching.  So we do it ourselves,
-   * pre-emptively, before using our other machinery.
+   * preemptively, before using our other machinery.
    */
   key = "mod_xfer.retr-path";
   (void) pr_table_add(cmd->notes, key, pstrdup(cmd->pool, cmd->arg), 0);
@@ -390,7 +390,7 @@ MODRET vroot_pre_scp_stor(cmd_rec *cmd) {
 
   /* Unlike SFTP sessions, mod_sftp does NOT set these cmd->notes for SCP
    * sessions before doing the PRE_CMD dispatching.  So we do it ourselves,
-   * pre-emptively, before using our other machinery.
+   * preemptively, before using our other machinery.
    */
   key = "mod_xfer.store-path";
   (void) pr_table_add(cmd->notes, key, pstrdup(cmd->pool, cmd->arg), 0);

@@ -50,13 +50,13 @@ jobs:
         run: |
           apt-get update -qq
           # for builds
-          apt-get install -y gcc git make tzdata
+          apt-get install -y --no-install-recommends gcc git make tzdata
 
           # for OpenSSL support
-          apt-get install -y libssl-dev
+          apt-get install -y --no-install-recommends libssl-dev
 
           # for integration/regression tests
-          apt-get install -y \
+          apt-get install -y --no-install-recommends \
             libauthen-oath-perl \
             libcompress-raw-zlib-perl \
             libdata-dumper-simple-perl \
