@@ -97,12 +97,12 @@ jobs:
         run: |
           apt-get update -qq
           # for builds
-          apt-get install -y --no-install-recommends clang gcc make
+          apt-get install -y --no-install-recommends clang gcc libc-dev make
           # for unit tests
           apt-get install -y --no-install-recommends check libsubunit-dev
 
           # for OpenSSL support
-          apt-get install -y --no-install-recommends libssl-dev
+          apt-get install -y --no-install-recommends libssl-dev openssl
 
           # for test code coverage
           apt-get install -y --no-install-recommends lcov ruby
