@@ -698,7 +698,7 @@ static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
     "scanning aliases: aliased path = '%s', real path = '%s' in directory '%s'",
     alias_path, real_path, dir_path);
 
-  ptr = strrchr(alias_path, '/');
+  ptr = strrchr((char *) alias_path, '/');
   if (ptr == NULL) {
     /* This is not likely to happen, but if it does, simply move to the
      * next item in the table.
@@ -727,7 +727,7 @@ static int vroot_alias_dirscan(const void *key_data, size_t key_datasz,
     if (alias_rel_path[0] == '/') {
       alias_rel_path++;
     }
-    ptr = strchr(alias_rel_path, '/');
+    ptr = strchr((char *) alias_rel_path, '/');
 
     pr_trace_msg(trace_channel, 17,
       "adding VRootAlias '%s' to list of aliases contained in '%s'",
